@@ -31,7 +31,7 @@ class AnatomyRepository(private val context: Context) {
         val paths = listOfNotNull(app.sourceDir) + app.splitSourceDirs.orEmpty().toList()
         val context = coroutineContext
         val files = paths.map(::File)
-        report(info, "Aplikasi terinstal", StructureScanner().scan(files), DexCodeScanner().scan(files) { context.ensureActive() })
+        report(info, "Aplikasi terinstal", StructureScanner().scan(files), DexCodeScanner().scan(files, info.packageName) { context.ensureActive() })
     }
 
     suspend fun analyzeFile(uri: Uri): AnatomyReport = withContext(Dispatchers.IO) {
@@ -52,7 +52,7 @@ class AnatomyRepository(private val context: Context) {
                 publicSourceDir = file.absolutePath
             }
             val context = coroutineContext
-            report(info, "File APK lokal", StructureScanner().scan(listOf(file)), DexCodeScanner().scan(listOf(file)) { context.ensureActive() })
+            report(info, "File APK lokal", StructureScanner().scan(listOf(file)), DexCodeScanner().scan(listOf(file), info.packageName) { context.ensureActive() })
         } finally { file.delete() }
     }
 

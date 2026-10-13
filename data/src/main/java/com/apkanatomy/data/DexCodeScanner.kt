@@ -19,7 +19,7 @@ internal data class CodeLimits(val dexBytes: Long = 16L * 1024 * 1024,
 @Suppress("DEPRECATION")
 internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
     init { require(limits.dexBytes > 0 && limits.totalBytes > 0 && limits.classes > 0 && limits.methods > 0 && limits.visitedInstructions > 0 && limits.displayedInstructions > 0 && limits.calls > 0) }
-    fun scan(files: List<File>, checkCancelled: () -> Unit = {}): CodeIndex {
+    fun scan(files: List<File>, preferredPackage: String? = null, checkCancelled: () -> Unit = {}): CodeIndex {
         val classes = mutableListOf<CodeClass>()
         val methods = mutableListOf<CodeMethod>()
         val calls = mutableListOf<MethodCall>()
@@ -51,7 +51,11 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                             }
                             require(bytes.size.toLong() == entry.size) { "Ukuran DEX tidak cocok" }
                             val dex = DexBackedDexFile.fromInputStream(null, bytes.inputStream())
-                            for (cls in dex.classes) {
+                            val prefix = preferredPackage?.takeIf { it.isNotBlank() }?.replace('.', '/')?.let { "L$it/" }
+                            val ordered = if (prefix == null) dex.classes.asSequence() else
+                                dex.classes.asSequence().filter { it.type.startsWith(prefix) } +
+                                    dex.classes.asSequence().filter { !it.type.startsWith(prefix) }
+                            for (cls in ordered) {
                                 checkCancelled()
                                 if (classes.size >= limits.classes) { warnings.add("Batas class tercapai; indeks hanya sebagian."); return result() }
                                 classes.add(CodeClass(cls.type, cls.superclass, cls.interfaces.toList(), archive, entry.name))

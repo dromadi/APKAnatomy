@@ -56,3 +56,5 @@ APK import is still temporary and scans happen on IO before showing the report. 
 Sources: https://github.com/JesusFreke/smali and https://github.com/skylot/jadx/wiki/Use-jadx-as-a-library
 
 Smoke test: open APKAnatomy itself, switch to Code, search AnatomyRepository, open a method, inspect instructions/calls/Find usage, follow one resolved call and return. Inspect a small app with a native or abstract method. Confirm that an oversized DEX produces a warning.
+
+Within each DEX, matching package-namespace classes are scanned first so framework libraries are less likely to consume the entire indexing budget. Package namespace is a priority hint only; other classes remain eligible.
