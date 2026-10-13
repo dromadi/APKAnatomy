@@ -1,5 +1,7 @@
 package com.apkanatomy.app
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -147,7 +149,7 @@ private fun ArchiveBrowser(s: PackageStructure) {
     }
     selected?.let { entry ->
         AlertDialog(onDismissRequest = { selected = null }, title = { Text("Pelajari file") },
-            text = { SelectionContainer { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            text = { SelectionContainer { Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("${entry.archive}/${entry.path}")
                 Text("Ukuran isi: ${formatSize(entry.size)}\nUkuran tersimpan: ${formatSize(entry.compressedSize)}")
                 Text(explainEntry(entry.path))
