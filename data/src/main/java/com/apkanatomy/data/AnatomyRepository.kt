@@ -24,7 +24,10 @@ class AnatomyRepository(private val context: Context) {
     }
 
     suspend fun analyzeInstalled(packageName: String): AnatomyReport = withContext(Dispatchers.IO) {
-        report(pm.getPackageInfo(packageName, flags), "Aplikasi terinstal")
+        val info = pm.getPackageInfo(packageName, flags)
+        val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
+        val paths = listOfNotNull(app.sourceDir) + app.splitSourceDirs.orEmpty().toList()
+        report(info, "Aplikasi terinstal", StructureScanner().scan(paths.map(::File)))
     }
 
     suspend fun analyzeFile(uri: Uri): AnatomyReport = withContext(Dispatchers.IO) {
@@ -44,11 +47,11 @@ class AnatomyRepository(private val context: Context) {
                 sourceDir = file.absolutePath
                 publicSourceDir = file.absolutePath
             }
-            report(info, "File APK lokal")
+            report(info, "File APK lokal", StructureScanner().scan(listOf(file)))
         } finally { file.delete() }
     }
 
-    private fun report(info: PackageInfo, source: String): AnatomyReport {
+    private fun report(info: PackageInfo, source: String, structure: PackageStructure): AnatomyReport {
         val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
         val components = buildList {
             info.activities.orEmpty().forEach { add(component(it, ComponentKind.ACTIVITY, it.permission, app.enabled)) }
@@ -71,7 +74,7 @@ class AnatomyRepository(private val context: Context) {
                     }
                 } catch (_: PackageManager.NameNotFoundException) { "Tidak dikenal di perangkat ini" }
                 AppPermission(name, protection)
-            })
+            }, structure)
     }
 
     private fun component(info: ComponentInfo, kind: ComponentKind, permission: String?, appEnabled: Boolean) =
