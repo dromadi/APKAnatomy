@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <!-- Core function: inspect all installed packages, including apps without launchers. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
+    <application android:label="APKAnatomy" android:icon="@drawable/ic_anatomy" android:allowBackup="false" android:supportsRtl="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity>
+    </application>
+</manifest>
