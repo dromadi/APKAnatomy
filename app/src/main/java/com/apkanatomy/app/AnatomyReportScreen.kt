@@ -22,7 +22,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport) {
     Text(report.packageName, style = MaterialTheme.typography.bodySmall)
     Text("v${report.version} · min SDK ${report.minSdk} · target ${report.targetSdk}")
     ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
-        listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Isi APK").forEachIndexed { index, label ->
+        listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Isi APK", "Kode").forEachIndexed { index, label ->
             Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label) })
         }
     }
@@ -33,6 +33,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport) {
             2 -> ComponentsScreen(report)
             3 -> PermissionsScreen(report)
             4 -> ArchiveBrowser(report.structure)
+            5 -> CodeExplorer(report.code)
         }
     }
 }
@@ -45,7 +46,8 @@ private fun Overview(report: AnatomyReport, open: (Int) -> Unit) {
         item { LessonCard("Teknologi", s.technologies.joinToString { it.name }.ifEmpty { "Belum ada penanda yang dikenali. Ini tidak otomatis berarti aplikasi pure native." }, onClick = { open(1) }) }
         item { LessonCard("Kerangka", "${report.components.size} komponen · ${report.permissions.size} izin yang diminta. Pelajari titik masuk layar, kerja tanpa layar, broadcast, dan akses data.", onClick = { open(2) }) }
         item { LessonCard("Organ & isi paket", "${s.archives.size} arsip · ${s.entries.size} file · ${s.dex.size} DEX · ${s.libraries.size} library native. Ukuran isi terdaftar: ${formatSize(s.entries.filter { it.size >= 0 }.sumOf { it.size })} sebelum kompresi.", onClick = { open(4) }) }
-        item { LessonCard("Panduan penelusuran", "Mulai dari nama komponen atau library yang dikenali. Catat file buktinya, kemudian telusuri referensi kode pada tahap berikutnya. Nama file saja belum menjelaskan fungsi atau hubungan antarbagian.") }
+        item { LessonCard("Telusuri kode", "${report.code.classes.size} class · ${report.code.methods.size} method terdefinisi · ${report.code.calls.size} pemanggilan langsung terbaca. Cari nama, buka instruksi, dan gunakan Find usage.", onClick = { open(5) }) }
+        item { LessonCard("Panduan penelusuran", "Mulai dari nama komponen atau library yang dikenali. Catat file buktinya, kemudian gunakan tab Kode untuk menelusuri method dan pemanggilan langsung. Nama file saja belum menjelaskan fungsi atau hubungan antarbagian.") }
         items(s.warnings) { LessonCard("Hasil sebagian", it) }
     }
 }

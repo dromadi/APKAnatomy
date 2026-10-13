@@ -13,6 +13,7 @@ data class AnatomyReport(
     val minSdk: Int, val targetSdk: Int, val source: String,
     val components: List<AppComponent>, val permissions: List<AppPermission>,
     val structure: PackageStructure = PackageStructure(),
+    val code: CodeIndex = CodeIndex(),
 )
 fun List<AppComponent>.filtered(query: String, exportedOnly: Boolean): List<AppComponent> =
     filter { (!exportedOnly || it.exported) && it.name.contains(query, ignoreCase = true) }

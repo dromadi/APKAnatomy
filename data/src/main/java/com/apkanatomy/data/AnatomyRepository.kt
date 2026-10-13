@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.pm.*
 import android.net.Uri
 import com.apkanatomy.domain.*
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -27,7 +29,9 @@ class AnatomyRepository(private val context: Context) {
         val info = pm.getPackageInfo(packageName, flags)
         val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
         val paths = listOfNotNull(app.sourceDir) + app.splitSourceDirs.orEmpty().toList()
-        report(info, "Aplikasi terinstal", StructureScanner().scan(paths.map(::File)))
+        val context = coroutineContext
+        val files = paths.map(::File)
+        report(info, "Aplikasi terinstal", StructureScanner().scan(files), DexCodeScanner().scan(files) { context.ensureActive() })
     }
 
     suspend fun analyzeFile(uri: Uri): AnatomyReport = withContext(Dispatchers.IO) {
@@ -47,11 +51,12 @@ class AnatomyRepository(private val context: Context) {
                 sourceDir = file.absolutePath
                 publicSourceDir = file.absolutePath
             }
-            report(info, "File APK lokal", StructureScanner().scan(listOf(file)))
+            val context = coroutineContext
+            report(info, "File APK lokal", StructureScanner().scan(listOf(file)), DexCodeScanner().scan(listOf(file)) { context.ensureActive() })
         } finally { file.delete() }
     }
 
-    private fun report(info: PackageInfo, source: String, structure: PackageStructure): AnatomyReport {
+    private fun report(info: PackageInfo, source: String, structure: PackageStructure, code: CodeIndex): AnatomyReport {
         val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
         val components = buildList {
             info.activities.orEmpty().forEach { add(component(it, ComponentKind.ACTIVITY, it.permission, app.enabled)) }
@@ -74,7 +79,7 @@ class AnatomyRepository(private val context: Context) {
                     }
                 } catch (_: PackageManager.NameNotFoundException) { "Tidak dikenal di perangkat ini" }
                 AppPermission(name, protection)
-            }, structure)
+            }, structure, code)
     }
 
     private fun component(info: ComponentInfo, kind: ComponentKind, permission: String?, appEnabled: Boolean) =
