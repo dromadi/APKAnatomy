@@ -31,7 +31,8 @@ class AnatomyRepository(private val context: Context) {
         val paths = listOfNotNull(app.sourceDir) + app.splitSourceDirs.orEmpty().toList()
         val context = coroutineContext
         val files = paths.map(::File)
-        report(info, "Aplikasi terinstal", StructureScanner().scan(files), DexCodeScanner().scan(files, info.packageName) { context.ensureActive() })
+        report(info, "Aplikasi terinstal", StructureScanner().scan(files), DexCodeScanner().scan(files, info.packageName) { context.ensureActive() },
+            ManifestReader.read(File(app.sourceDir)))
     }
 
     suspend fun analyzeFile(uri: Uri): AnatomyReport = withContext(Dispatchers.IO) {
@@ -52,11 +53,13 @@ class AnatomyRepository(private val context: Context) {
                 publicSourceDir = file.absolutePath
             }
             val context = coroutineContext
-            report(info, "File APK lokal", StructureScanner().scan(listOf(file)), DexCodeScanner().scan(listOf(file), info.packageName) { context.ensureActive() })
+            report(info, "File APK lokal", StructureScanner().scan(listOf(file)), DexCodeScanner().scan(listOf(file), info.packageName) { context.ensureActive() },
+                ManifestReader.read(file))
         } finally { file.delete() }
     }
 
-    private fun report(info: PackageInfo, source: String, structure: PackageStructure, code: CodeIndex): AnatomyReport {
+    private fun report(info: PackageInfo, source: String, structure: PackageStructure, code: CodeIndex,
+        manifest: Pair<String?, String?>): AnatomyReport {
         val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
         val components = buildList {
             info.activities.orEmpty().forEach { add(component(it, ComponentKind.ACTIVITY, it.permission, app.enabled)) }
@@ -79,7 +82,7 @@ class AnatomyRepository(private val context: Context) {
                     }
                 } catch (_: PackageManager.NameNotFoundException) { "Tidak dikenal di perangkat ini" }
                 AppPermission(name, protection)
-            }, structure, code)
+            }, structure, code, manifestXml = manifest.first, manifestNote = manifest.second)
     }
 
     private fun component(info: ComponentInfo, kind: ComponentKind, permission: String?, appEnabled: Boolean) =

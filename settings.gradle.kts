@@ -4,4 +4,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "APKAnatomy"
-include(":app", ":domain", ":data")
+include(":app", ":domain", ":data", ":core:axml")

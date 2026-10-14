@@ -6,11 +6,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import com.apkanatomy.domain.*
 import java.util.Locale
@@ -22,7 +28,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport) {
     Text(report.packageName, style = MaterialTheme.typography.bodySmall)
     Text("v${report.version} · min SDK ${report.minSdk} · target ${report.targetSdk}")
     ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
-        listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Isi APK", "Kode").forEachIndexed { index, label ->
+        listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Isi APK", "Kode", "Manifest").forEachIndexed { index, label ->
             Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label) })
         }
     }
@@ -34,6 +40,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport) {
             3 -> PermissionsScreen(report)
             4 -> ArchiveBrowser(report.structure)
             5 -> CodeExplorer(report.code)
+            6 -> ManifestScreen(report)
         }
     }
 }
@@ -44,7 +51,8 @@ private fun Overview(report: AnatomyReport, open: (Int) -> Unit) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item { LessonCard("Mulai membedah", "Kenali teknologinya, jelajahi komponen, lalu telusuri file yang menyusunnya. Hasil ini berasal dari analisis statis paket; alur eksekusi belum direkam.") }
         item { LessonCard("Teknologi", s.technologies.joinToString { it.name }.ifEmpty { "Belum ada penanda yang dikenali. Ini tidak otomatis berarti aplikasi pure native." }, onClick = { open(1) }) }
-        item { LessonCard("Kerangka", "${report.components.size} komponen · ${report.permissions.size} izin yang diminta. Pelajari titik masuk layar, kerja tanpa layar, broadcast, dan akses data.", onClick = { open(2) }) }
+        item { LessonCard("Kerangka", "${report.components.size} komponen · ${report.permissions.size} izin yang diminta · ${report.components.openToAllApps().size} exported tanpa izin. Pelajari titik masuk layar, kerja tanpa layar, broadcast, dan akses data.", onClick = { open(2) }) }
+        item { LessonCard("Manifest", report.manifestXml?.let { "${it.lines().size} baris XML hasil dekode AndroidManifest.xml biner. Lihat deklarasi lengkap, termasuk intent-filter dan meta-data." } ?: (report.manifestNote ?: "Manifest tidak tersedia."), onClick = { open(6) }) }
         item { LessonCard("Organ & isi paket", "${s.archives.size} arsip · ${s.entries.size} file · ${s.dex.size} DEX · ${s.libraries.size} library native. Ukuran isi terdaftar: ${formatSize(s.entries.filter { it.size >= 0 }.sumOf { it.size })} sebelum kompresi.", onClick = { open(4) }) }
         item { LessonCard("Telusuri kode", "${report.code.classes.size} class · ${report.code.methods.size} method terdefinisi · ${report.code.calls.size} pemanggilan langsung terbaca. Cari nama, buka instruksi, dan gunakan Find usage.", onClick = { open(5) }) }
         item { LessonCard("Panduan penelusuran", "Mulai dari nama komponen atau library yang dikenali. Catat file buktinya, kemudian gunakan tab Kode untuk menelusuri method dan pemanggilan langsung. Nama file saja belum menjelaskan fungsi atau hubungan antarbagian.") }
@@ -88,15 +96,17 @@ private fun ComponentsScreen(report: AnatomyReport) {
         }
     }
     Row { Checkbox(exportedOnly, { exportedOnly = it }); Text("Hanya exported", modifier = Modifier.padding(top = 14.dp)) }
+    val open = remember(report.components) { report.components.openToAllApps().toSet() }
     val components = remember(report.components, query, exportedOnly, kind) {
         report.components.filtered(query, exportedOnly).filter { kind == -1 || it.kind.ordinal == kind }
     }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
         item { LessonCard("Pelajari komponen", if (kind >= 0) componentLesson(ComponentKind.entries[kind]) else "Activity: titik masuk layar. Service: kerja tanpa layar. Receiver: penerima broadcast. Provider: akses data melalui content URI.") }
-        item { Text("${components.size} komponen. Exported membuka deklarasi akses dari aplikasi lain; izin tetap bisa membatasinya. Intent-filter dan referensi kode belum ditampilkan.", style = MaterialTheme.typography.bodySmall) }
+        item { Text("${components.size} komponen. Exported membuka deklarasi akses dari aplikasi lain; izin tetap bisa membatasinya. Intent-filter terlihat di tab Manifest; referensi kode dari komponen belum ditautkan.", style = MaterialTheme.typography.bodySmall) }
         if (components.isEmpty()) item { Text("Tidak ada komponen yang cocok.") }
         items(components, key = { "${it.kind}:${it.name}" }) { component ->
             LessonCard(component.name, "${component.kind.name} · exported=${component.exported} · enabled=${component.enabled}" +
+                (if (component in open) "\nTerbuka: aplikasi lain dapat memanggilnya tanpa izin." else "") +
                 (component.permission?.let { "\nIzin akses/baca: $it" } ?: "") +
                 (component.writePermission?.let { "\nIzin tulis: $it" } ?: "") +
                 (component.authority?.let { "\nAuthority: $it" } ?: ""))
@@ -110,6 +120,27 @@ private fun PermissionsScreen(report: AnatomyReport) {
         item { LessonCard("Pelajari izin", "Izin memberi petunjuk kemampuan yang diminta aplikasi. Daftar ini berasal dari manifest, bukan bukti izin sudah diberikan atau kemampuan itu benar-benar digunakan.") }
         if (report.permissions.isEmpty()) item { Text("Tidak ada izin yang diminta.") }
         items(report.permissions, key = { it.name }) { permission -> LessonCard(permission.name, "Proteksi: ${permission.protection}") }
+    }
+}
+
+@Composable
+private fun ManifestScreen(report: AnatomyReport) {
+    val xml = report.manifestXml
+    val lines = remember(xml) { xml?.trimEnd()?.lines().orEmpty() }
+    val clipboard = LocalClipboardManager.current
+    LazyColumn(contentPadding = PaddingValues(vertical = 12.dp)) {
+        item {
+            LessonCard("Pelajari manifest", "Di dalam APK, AndroidManifest.xml disimpan sebagai XML biner. APKAnatomy mendekodenya sendiri tanpa PackageManager, sehingga intent-filter, meta-data, dan atribut lain ikut terlihat. Referensi resource tampil sebagai ID seperti @0x7f0a0001 karena resources.arsc belum dibaca.")
+        }
+        if (xml == null) item { Text(report.manifestNote ?: "Manifest tidak tersedia.", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp)) }
+        else item { TextButton(onClick = { clipboard.setText(AnnotatedString(xml)) }) { Text("Salin XML") } }
+        itemsIndexed(lines) { index, line ->
+            Row {
+                Text("${index + 1}", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.outline,
+                    textAlign = TextAlign.End, modifier = Modifier.width(36.dp).padding(end = 8.dp))
+                Text(line, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+            }
+        }
     }
 }
 

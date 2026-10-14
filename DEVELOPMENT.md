@@ -1,8 +1,8 @@
-# APKAnatomy 0.1.0-alpha.3
+# APKAnatomy 0.1.0-alpha.4
 
 Open the project in Android Studio with JDK 17 and Android SDK 35. The included wrapper pins Gradle 8.9 with a distribution checksum.
 
-Build/check: `./gradlew :domain:test :data:testDebugUnitTest :app:lintDebug :app:assembleDebug`.
+Build/check: `./gradlew :core:axml:test :domain:test :data:testDebugUnitTest :app:lintDebug :app:assembleDebug`.
 CI uploads the debug APK and verification reports on pushes and pull requests.
 
 ## Implemented
@@ -17,7 +17,7 @@ CI uploads the debug APK and verification reports on pushes and pull requests.
 
 ## Current limits
 
-Standalone manifest decoding delegates to Android PackageManager; no independent AXML decoder or intent-filter extraction yet. Some malformed/unsupported APKs may be rejected by the platform. Split archives (.apks/.xapk) are not supported. Imported files are not retained across process death. Installed-package visibility applies only to the current profile; Play distribution requires reviewing QUERY_ALL_PACKAGES eligibility.
+Component and permission lists come from Android PackageManager; the raw manifest view uses the independent AXML decoder (alpha.4), but intent-filters are shown only as XML, not yet linked to components. Some malformed/unsupported APKs may be rejected by the platform. Split archives (.apks/.xapk) are not supported. Imported files are not retained across process death. Installed-package visibility applies only to the current profile; Play distribution requires reviewing QUERY_ALL_PACKAGES eligibility.
 
 Certificate fingerprints/signature scheme verification, app icons, size charts, and report exports remain follow-up milestones. An exported component does not by itself establish a vulnerability. Protection categories describe requested permissions, not runtime grants.
 
@@ -58,3 +58,15 @@ Sources: https://github.com/JesusFreke/smali and https://github.com/skylot/jadx/
 Smoke test: open APKAnatomy itself, switch to Code, search AnatomyRepository, open a method, inspect instructions/calls/Find usage, follow one resolved call and return. Inspect a small app with a native or abstract method. Confirm that an oversized DEX produces a warning.
 
 Within each DEX, matching package-namespace classes are scanned first so framework libraries are less likely to consume the entire indexing budget. Package namespace is a priority hint only; other classes remain eligible.
+
+## Alpha.4: independent manifest decoding
+
+New `:core:axml` module (pure Kotlin, no Android dependency) decodes Android binary XML: UTF-8 and UTF-16 string pools, namespaces, the attribute resource map (unnamed attributes fall back to their resource ID), and typed values (references, booleans, integers, floats, dimensions, fractions, colors). Chunk and string bounds are checked; truncated or tampered input fails with `AxmlException` instead of over-reading. Resource references are shown as IDs (`@0x7f…`) because resources.arsc is not resolved yet.
+
+The Manifest tab shows the decoded base APK manifest with line numbers and a copy action. Manifests over 8 MiB (declared or inflated) are rejected with a note; a manifest that fails to decode does not fail the rest of the report. Split APK manifests are not shown.
+
+Components that are enabled, exported and reachable without a permission (for providers: read or write unguarded) are counted on the overview and marked in the component list. This is a review list; a launcher activity is expected to be open.
+
+Tests use real aapt2 output (`core/axml/src/test/resources`, regeneration steps in `AxmlDecoderTest`) covering both string encodings, typed values, and truncated/corrupt input, plus `ManifestReader` behaviour for missing, non-binary and non-ZIP inputs.
+
+Smoke test: open the Manifest tab for APKAnatomy itself and for a system app, compare with `aapt2 dump xmltree`, copy the XML, and import a corrupt APK to confirm the other tabs still work.
