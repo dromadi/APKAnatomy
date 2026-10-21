@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.5
+# APKAnatomy 0.1.0-alpha.6
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -17,7 +17,7 @@ CI uploads the debug APK and verification reports on pushes and pull requests.
 
 ## Current limits
 
-Component and permission lists come from Android PackageManager; the raw manifest view uses the independent AXML decoder (alpha.4), but intent-filters are shown only as XML, not yet linked to components. Some malformed/unsupported APKs may be rejected by the platform. Split archives (.apks/.xapk) are not supported. Imported files are not retained across process death. Installed-package visibility applies only to the current profile; Play distribution requires reviewing QUERY_ALL_PACKAGES eligibility.
+Component and permission lists come from Android PackageManager; the raw manifest view uses the independent AXML decoder (alpha.4), and since alpha.6 intent-filters are linked to their components. Some malformed/unsupported APKs may be rejected by the platform. Split archives (.apks/.xapk) are not supported. Imported files are not retained across process death. Installed-package visibility applies only to the current profile; Play distribution requires reviewing QUERY_ALL_PACKAGES eligibility.
 
 Signature digest verification (Android does it at install), app icons, size charts, and report exports remain follow-up milestones. An exported component does not by itself establish a vulnerability. Protection categories describe requested permissions, not runtime grants.
 
@@ -82,3 +82,13 @@ Security notes (in `domain`, unit tested) explain: unsigned or v1-only APKs (v1-
 Fixtures in `data/src/test/resources/signing` are real apksigner output (v1 only, v1+v2+v3 with v4 .idsig, v3+v3.1 key rotation, unsigned); `make-fixtures.sh` regenerates them. Expected fingerprints come from `apksigner verify --print-certs`. The scanner was also cross-checked against apksigner on APKAnatomy's own debug build and the F-Droid client APK.
 
 Smoke test: open DNA for APKAnatomy itself (debug certificate, v2), for a Play-installed app (v2/v3, possibly source stamp and Play metadata), and for an imported APK (v4 not checkable).
+
+## Alpha.6: intent-filters, component roles and sensitive permissions
+
+Intent-filters from the decoded manifest are attached to components by fully qualified name (".Main" and "Main" are resolved against the package like the package manager does; activity-alias included). Attributes are looked up by name and, when obfuscation strips names, by framework resource ID (IDs verified with aapt2). All <data> elements of one filter are merged, as Android matches them together (a scheme in one element and a host in another), into schemes, hosts (with port), paths (path, prefix, suffix, pattern, advanced pattern) and MIME types.
+
+Lessons explain well-known filters: launcher entry, verified App Links, web and custom-scheme deep links, file openers, share targets, boot/package/SMS broadcasts and FCM. Components bound through system permissions (accessibility, notification listener, device admin, input method, VPN, autofill, job, tile, NFC, wallpaper) get a role description. Requested permissions with special reach (overlay, all-files access, install packages, usage stats, SMS, background location, ...) are marked and listed first. These are explanations of what a declaration enables, not evidence that the app misuses it.
+
+`intent_manifest.axml` (aapt2 output of `intent_manifest.xml`) covers relative names, aliases, App Links, split <data> elements, MIME filters and bound services. The parser was cross-checked on the F-Droid client manifest (36 components, 23 filters, two verified App Links).
+
+Smoke test: open Komponen for a browser or social app and check deep links; open an app with an accessibility service; confirm ⚠ permissions appear first in Izin.

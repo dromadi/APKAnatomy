@@ -54,7 +54,7 @@ private fun Overview(report: AnatomyReport, open: (Int) -> Unit) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item { LessonCard("Mulai membedah", "Kenali teknologinya, jelajahi komponen, lalu telusuri file yang menyusunnya. Hasil ini berasal dari analisis statis paket; alur eksekusi belum direkam.") }
         item { LessonCard("Teknologi", s.technologies.joinToString { it.name }.ifEmpty { "Belum ada penanda yang dikenali. Ini tidak otomatis berarti aplikasi pure native." }, onClick = { open(1) }) }
-        item { LessonCard("Kerangka", "${report.components.size} komponen · ${report.permissions.size} izin yang diminta · ${report.components.openToAllApps().size} exported tanpa izin. Pelajari titik masuk layar, kerja tanpa layar, broadcast, dan akses data.", onClick = { open(2) }) }
+        item { LessonCard("Kerangka", "${report.components.size} komponen · ${report.permissions.size} izin yang diminta · ${report.components.openToAllApps().size} exported tanpa izin · ${report.components.sumOf { c -> c.intentFilters.count { it.isDeepLink } }} deep link · ${report.permissions.count { sensitivePermissionLesson(it.name) != null }} izin sensitif. Pelajari titik masuk layar, kerja tanpa layar, broadcast, dan akses data.", onClick = { open(2) }) }
         item {
             val attention = remember(report) { securityNotes(report.security, report.signing, System.currentTimeMillis()).count { it.level == NoteLevel.PERHATIAN } }
             LessonCard("DNA & keamanan", "Skema tanda tangan: ${report.signing.schemes.joinToString { it.label }.ifEmpty { "tidak ditemukan" }} · " +
@@ -110,11 +110,13 @@ private fun ComponentsScreen(report: AnatomyReport) {
     }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
         item { LessonCard("Pelajari komponen", if (kind >= 0) componentLesson(ComponentKind.entries[kind]) else "Activity: titik masuk layar. Service: kerja tanpa layar. Receiver: penerima broadcast. Provider: akses data melalui content URI.") }
-        item { Text("${components.size} komponen. Exported membuka deklarasi akses dari aplikasi lain; izin tetap bisa membatasinya. Intent-filter terlihat di tab Manifest; referensi kode dari komponen belum ditautkan.", style = MaterialTheme.typography.bodySmall) }
+        item { Text("${components.size} komponen. Exported membuka deklarasi akses dari aplikasi lain; izin tetap bisa membatasinya. Intent-filter menjelaskan pemicunya; referensi kode dari komponen belum ditautkan.", style = MaterialTheme.typography.bodySmall) }
         if (components.isEmpty()) item { Text("Tidak ada komponen yang cocok.") }
         items(components, key = { "${it.kind}:${it.name}" }) { component ->
             LessonCard(component.name, "${component.kind.name} · exported=${component.exported} · enabled=${component.enabled}" +
                 (if (component in open) "\nTerbuka: aplikasi lain dapat memanggilnya tanpa izin." else "") +
+                (component.role()?.let { "\nPeran: $it" } ?: "") +
+                component.intentFilters.joinToString("") { "\n\n" + describeFilter(it) } +
                 (component.permission?.let { "\nIzin akses/baca: $it" } ?: "") +
                 (component.writePermission?.let { "\nIzin tulis: $it" } ?: "") +
                 (component.authority?.let { "\nAuthority: $it" } ?: ""))
@@ -125,10 +127,32 @@ private fun ComponentsScreen(report: AnatomyReport) {
 @Composable
 private fun PermissionsScreen(report: AnatomyReport) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+        item {
+            val sensitive = report.permissions.count { sensitivePermissionLesson(it.name) != null }
+            Text("$sensitive izin sensitif ditandai ⚠ dan ditampilkan lebih dulu.", style = MaterialTheme.typography.bodySmall)
+        }
         item { LessonCard("Pelajari izin", "Izin memberi petunjuk kemampuan yang diminta aplikasi. Daftar ini berasal dari manifest, bukan bukti izin sudah diberikan atau kemampuan itu benar-benar digunakan.") }
         if (report.permissions.isEmpty()) item { Text("Tidak ada izin yang diminta.") }
-        items(report.permissions, key = { it.name }) { permission -> LessonCard(permission.name, "Proteksi: ${permission.protection}") }
+        val sorted = report.permissions.sortedBy { sensitivePermissionLesson(it.name) == null }
+        items(sorted, key = { it.name }) { permission ->
+            val lesson = sensitivePermissionLesson(permission.name)
+            LessonCard(if (lesson != null) "⚠ ${permission.name}" else permission.name,
+                "Proteksi: ${permission.protection}" + (lesson?.let { "\nSensitif: $it" } ?: ""))
+        }
     }
+}
+
+private fun describeFilter(filter: IntentFilterInfo): String = buildString {
+    append("Intent-filter")
+    if (filter.autoVerify) append(" (autoVerify)")
+    append(":")
+    if (filter.actions.isNotEmpty()) append("\nAksi: ").append(filter.actions.joinToString { it.removePrefix("android.intent.action.") })
+    if (filter.categories.isNotEmpty()) append("\nKategori: ").append(filter.categories.joinToString { it.removePrefix("android.intent.category.") })
+    if (filter.schemes.isNotEmpty()) append("\nSkema: ").append(filter.schemes.joinToString())
+    if (filter.hosts.isNotEmpty()) append("\nHost: ").append(filter.hosts.joinToString())
+    if (filter.paths.isNotEmpty()) append("\nPath: ").append(filter.paths.joinToString())
+    if (filter.mimeTypes.isNotEmpty()) append("\nMIME: ").append(filter.mimeTypes.joinToString())
+    filter.lesson()?.let { append("\n→ ").append(it) }
 }
 
 @Composable

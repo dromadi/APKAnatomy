@@ -70,6 +70,7 @@ class AnatomyRepository(private val context: Context) {
                     .copy(authority = it.authority, writePermission = it.writePermission))
             }
         }.sortedWith(compareBy({ it.kind.ordinal }, { it.name }))
+            .let { list -> manifest.root?.let(::intentFiltersByComponent)?.let { byName -> list.map { it.copy(intentFilters = byName[it.name].orEmpty()) } } ?: list }
         return AnatomyReport(info.packageName, pm.getApplicationLabel(app).toString(),
             info.versionName ?: "—", app.minSdkVersion, app.targetSdkVersion, source,
             components, info.requestedPermissions.orEmpty().map { name ->

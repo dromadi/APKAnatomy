@@ -6,6 +6,22 @@ data class AppComponent(
     val name: String, val kind: ComponentKind, val exported: Boolean,
     val enabled: Boolean, val permission: String?, val authority: String? = null,
     val writePermission: String? = null,
+    /** From the decoded manifest; empty when it could not be read. */
+    val intentFilters: List<IntentFilterInfo> = emptyList(),
+)
+/**
+ * Android merges the attributes of all <data> elements in one filter (a scheme in one element
+ * and a host in another still match together), so they are collected per filter.
+ */
+data class IntentFilterInfo(
+    val actions: List<String>, val categories: List<String>,
+    val schemes: List<String> = emptyList(),
+    /** Host, with ":port" when declared. */
+    val hosts: List<String> = emptyList(),
+    /** e.g. "/open", "/open*" (prefix), "*.pdf" (suffix), "pola /.*" (pattern). */
+    val paths: List<String> = emptyList(),
+    val mimeTypes: List<String> = emptyList(),
+    val autoVerify: Boolean = false,
 )
 data class AppPermission(val name: String, val protection: String)
 data class AnatomyReport(
