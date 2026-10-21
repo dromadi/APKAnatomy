@@ -32,7 +32,7 @@ class AnatomyRepository(private val context: Context) {
         val context = coroutineContext
         val files = paths.map(::File)
         report(info, "Aplikasi terinstal", StructureScanner().scan(files), DexCodeScanner().scan(files, info.packageName) { context.ensureActive() },
-            ManifestReader.read(File(app.sourceDir)))
+            ManifestReader.read(File(app.sourceDir)), SigningScanner().scan(File(app.sourceDir), File(app.sourceDir + ".idsig")))
     }
 
     suspend fun analyzeFile(uri: Uri): AnatomyReport = withContext(Dispatchers.IO) {
@@ -54,12 +54,12 @@ class AnatomyRepository(private val context: Context) {
             }
             val context = coroutineContext
             report(info, "File APK lokal", StructureScanner().scan(listOf(file)), DexCodeScanner().scan(listOf(file), info.packageName) { context.ensureActive() },
-                ManifestReader.read(file))
+                ManifestReader.read(file), SigningScanner().scan(file, v4Signature = null))
         } finally { file.delete() }
     }
 
     private fun report(info: PackageInfo, source: String, structure: PackageStructure, code: CodeIndex,
-        manifest: Pair<String?, String?>): AnatomyReport {
+        manifest: DecodedManifest, signing: SigningReport): AnatomyReport {
         val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
         val components = buildList {
             info.activities.orEmpty().forEach { add(component(it, ComponentKind.ACTIVITY, it.permission, app.enabled)) }
@@ -82,8 +82,19 @@ class AnatomyRepository(private val context: Context) {
                     }
                 } catch (_: PackageManager.NameNotFoundException) { "Tidak dikenal di perangkat ini" }
                 AppPermission(name, protection)
-            }, structure, code, manifestXml = manifest.first, manifestNote = manifest.second)
+            }, structure, code, manifestXml = manifest.xml, manifestNote = manifest.note,
+            signing = signing, security = securityFlags(app, manifest))
     }
+
+    private fun securityFlags(app: ApplicationInfo, manifest: DecodedManifest) = SecurityFlags(
+        debuggable = app.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
+        allowBackup = app.flags and ApplicationInfo.FLAG_ALLOW_BACKUP != 0,
+        // The package manager already applies the target-SDK default (true below API 28).
+        cleartextTraffic = app.flags and ApplicationInfo.FLAG_USES_CLEARTEXT_TRAFFIC != 0,
+        testOnly = app.flags and ApplicationInfo.FLAG_TEST_ONLY != 0,
+        targetSdk = app.targetSdkVersion,
+        networkSecurityConfig = manifest.application?.attribute("networkSecurityConfig"),
+    )
 
     private fun component(info: ComponentInfo, kind: ComponentKind, permission: String?, appEnabled: Boolean) =
         AppComponent(info.name, kind, when (info) {

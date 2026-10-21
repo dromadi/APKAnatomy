@@ -30,7 +30,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport) {
     Text(report.packageName, style = MaterialTheme.typography.bodySmall)
     Text("v${report.version} · min SDK ${report.minSdk} · target ${report.targetSdk}")
     PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
-        listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Isi APK", "Kode", "Manifest").forEachIndexed { index, label ->
+        listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Isi APK", "Kode", "Manifest", "DNA").forEachIndexed { index, label ->
             Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label) })
         }
     }
@@ -43,6 +43,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport) {
             4 -> ArchiveBrowser(report.structure)
             5 -> CodeExplorer(report.code)
             6 -> ManifestScreen(report)
+            7 -> DnaScreen(report)
         }
     }
 }
@@ -54,6 +55,11 @@ private fun Overview(report: AnatomyReport, open: (Int) -> Unit) {
         item { LessonCard("Mulai membedah", "Kenali teknologinya, jelajahi komponen, lalu telusuri file yang menyusunnya. Hasil ini berasal dari analisis statis paket; alur eksekusi belum direkam.") }
         item { LessonCard("Teknologi", s.technologies.joinToString { it.name }.ifEmpty { "Belum ada penanda yang dikenali. Ini tidak otomatis berarti aplikasi pure native." }, onClick = { open(1) }) }
         item { LessonCard("Kerangka", "${report.components.size} komponen · ${report.permissions.size} izin yang diminta · ${report.components.openToAllApps().size} exported tanpa izin. Pelajari titik masuk layar, kerja tanpa layar, broadcast, dan akses data.", onClick = { open(2) }) }
+        item {
+            val attention = remember(report) { securityNotes(report.security, report.signing, System.currentTimeMillis()).count { it.level == NoteLevel.PERHATIAN } }
+            LessonCard("DNA & keamanan", "Skema tanda tangan: ${report.signing.schemes.joinToString { it.label }.ifEmpty { "tidak ditemukan" }} · " +
+                "${report.signing.certificates.size} sertifikat · $attention catatan perlu perhatian. Pelajari siapa penandatangannya dan flag keamanan manifest.", onClick = { open(7) })
+        }
         item { LessonCard("Manifest", report.manifestXml?.let { "${it.lines().size} baris XML hasil dekode AndroidManifest.xml biner. Lihat deklarasi lengkap, termasuk intent-filter dan meta-data." } ?: (report.manifestNote ?: "Manifest tidak tersedia."), onClick = { open(6) }) }
         item { LessonCard("Organ & isi paket", "${s.archives.size} arsip · ${s.entries.size} file · ${s.dex.size} DEX · ${s.libraries.size} library native. Ukuran isi terdaftar: ${formatSize(s.entries.filter { it.size >= 0 }.sumOf { it.size })} sebelum kompresi.", onClick = { open(4) }) }
         item { LessonCard("Telusuri kode", "${report.code.classes.size} class · ${report.code.methods.size} method terdefinisi · ${report.code.calls.size} pemanggilan langsung terbaca. Cari nama, buka instruksi, dan gunakan Find usage.", onClick = { open(5) }) }
@@ -143,6 +149,68 @@ private fun ManifestScreen(report: AnatomyReport) {
                     textAlign = TextAlign.End, modifier = Modifier.width(36.dp).padding(end = 8.dp))
                 Text(line, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
             }
+        }
+    }
+}
+
+private val schemeLessons = listOf(
+    SignatureScheme.V1 to "Tanda tangan JAR di META-INF. Melindungi tiap file di dalam ZIP, tetapi tidak seluruh arsip.",
+    SignatureScheme.V2 to "Blok tanda tangan sebelum direktori ZIP yang melindungi seluruh isi arsip (Android 7+).",
+    SignatureScheme.V3 to "Seperti v2, ditambah rentang SDK dan riwayat rotasi kunci (Android 9+).",
+    SignatureScheme.V31 to "Blok v3 terpisah agar rotasi kunci hanya berlaku mulai Android 13, sementara perangkat lama tetap memakai kunci lama.",
+    SignatureScheme.V4 to "Tanda tangan di file .idsig terpisah untuk instalasi bertahap (incremental, mis. lewat adb).",
+)
+
+@Composable
+private fun DnaScreen(report: AnatomyReport) {
+    val signing = report.signing
+    val notes = remember(report) { securityNotes(report.security, signing, System.currentTimeMillis()) }
+    val date = remember { java.text.SimpleDateFormat("yyyy-MM-dd", Locale.ROOT) }
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+        item { LessonCard("Pelajari DNA aplikasi", "Tanda tangan membuktikan APK berasal dari pemegang kunci yang sama dan isinya tidak diubah. Pembaruan aplikasi hanya diterima bila ditandatangani kunci yang sama atau penerusnya. Halaman ini membaca tanda tangan; verifikasi digest dilakukan Android saat instalasi.") }
+        item { Text("Catatan audit", style = MaterialTheme.typography.titleMedium) }
+        items(notes) { note -> NoteCard(note) }
+        item { Text("Skema tanda tangan", style = MaterialTheme.typography.titleMedium) }
+        items(schemeLessons) { (scheme, lesson) ->
+            val status = when {
+                scheme in signing.schemes -> "✓ Ada"
+                scheme == SignatureScheme.V4 && !signing.v4Checked -> "Tidak dapat diperiksa dari satu file APK"
+                else -> "Tidak ada"
+            }
+            LessonCard("${scheme.label}: $status", lesson)
+        }
+        if (SignatureScheme.SOURCE_STAMP in signing.schemes) item { LessonCard("Source stamp: ✓ Ada", "Cap sumber dari distributor (mis. Google Play) untuk menandai asal APK.") }
+        item { Text("Sertifikat penandatangan", style = MaterialTheme.typography.titleMedium) }
+        if (signing.certificates.isEmpty()) item { Text("Tidak ada sertifikat yang terbaca.") }
+        items(signing.certificates, key = { it.sha256 }) { cert ->
+            LessonCard(cert.subject, buildString {
+                appendLine("Ditemukan di: ${cert.foundIn.joinToString()}")
+                appendLine("Penerbit: ${cert.issuer}${if (cert.issuer == cert.subject) " (self-signed, lazim untuk APK)" else ""}")
+                appendLine("Berlaku: ${date.format(java.util.Date(cert.notBefore))} s.d. ${date.format(java.util.Date(cert.notAfter))}")
+                appendLine("Kunci: ${cert.keyAlgorithm}${cert.keySize?.let { " $it bit" } ?: ""} · Algoritma: ${cert.signatureAlgorithm}")
+                appendLine("Serial: ${cert.serialHex}")
+                appendLine("SHA-256: ${cert.sha256}")
+                appendLine("SHA-1: ${cert.sha1}")
+                append("MD5: ${cert.md5}")
+            })
+        }
+        if (signing.otherBlocks.isNotEmpty()) item { LessonCard("Isi lain APK Signing Block", signing.otherBlocks.joinToString("\n")) }
+        items(signing.warnings) { LessonCard("Hasil sebagian", it) }
+    }
+}
+
+@Composable
+private fun NoteCard(note: SecurityNote) {
+    val colors = MaterialTheme.colorScheme
+    val (container, label) = when (note.level) {
+        NoteLevel.PERHATIAN -> colors.errorContainer to "Perlu perhatian"
+        NoteLevel.INFO -> colors.secondaryContainer to "Info"
+        NoteLevel.BAIK -> colors.surfaceVariant to "Baik"
+    }
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = container)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("$label · ${note.title}", style = MaterialTheme.typography.titleSmall)
+            Text(note.explanation, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

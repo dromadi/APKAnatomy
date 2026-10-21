@@ -17,6 +17,9 @@ data class AnatomyReport(
     /** Base APK manifest decoded from binary XML; null when unreadable, with the reason in [manifestNote]. */
     val manifestXml: String? = null,
     val manifestNote: String? = null,
+    val signing: SigningReport = SigningReport(),
+    /** Null when the package manager did not expose application flags. */
+    val security: SecurityFlags? = null,
 )
 /**
  * Enabled exported components that any app can reach without holding a permission.

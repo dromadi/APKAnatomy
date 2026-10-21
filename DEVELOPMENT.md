@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.4
+# APKAnatomy 0.1.0-alpha.5
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -19,7 +19,7 @@ CI uploads the debug APK and verification reports on pushes and pull requests.
 
 Component and permission lists come from Android PackageManager; the raw manifest view uses the independent AXML decoder (alpha.4), but intent-filters are shown only as XML, not yet linked to components. Some malformed/unsupported APKs may be rejected by the platform. Split archives (.apks/.xapk) are not supported. Imported files are not retained across process death. Installed-package visibility applies only to the current profile; Play distribution requires reviewing QUERY_ALL_PACKAGES eligibility.
 
-Certificate fingerprints/signature scheme verification, app icons, size charts, and report exports remain follow-up milestones. An exported component does not by itself establish a vulnerability. Protection categories describe requested permissions, not runtime grants.
+Signature digest verification (Android does it at install), app icons, size charts, and report exports remain follow-up milestones. An exported component does not by itself establish a vulnerability. Protection categories describe requested permissions, not runtime grants.
 
 ## Device smoke test
 
@@ -70,3 +70,15 @@ Components that are enabled, exported and reachable without a permission (for pr
 Tests use real aapt2 output (`core/axml/src/test/resources`, regeneration steps in `AxmlDecoderTest`) covering both string encodings, typed values, and truncated/corrupt input, plus `ManifestReader` behaviour for missing, non-binary and non-ZIP inputs.
 
 Smoke test: open the Manifest tab for APKAnatomy itself and for a system app, compare with `aapt2 dump xmltree`, copy the XML, and import a corrupt APK to confirm the other tabs still work.
+
+## Alpha.5: DNA (signing and security flags)
+
+The DNA tab reads which signature schemes an APK carries and who signed it. v1 comes from `META-INF/*.SF` and the PKCS#7 blocks (`.RSA/.DSA/.EC`, up to 1 MiB each); v2, v3 and v3.1 from the APK Signing Block before the ZIP central directory (block capped at 16 MiB, every length checked); v4 from a `.idsig` file next to an installed APK. A single imported APK cannot carry v4, so it is shown as not checkable rather than absent. Source stamps, AGP dependency metadata and Play frosting blocks are named; other block IDs are listed in hex. ZIP64 archives are reported as unsupported.
+
+Certificates are de-duplicated by SHA-256 and list where they appear, including v3/v3.1 SDK ranges; a v3 proof-of-rotation attribute marks key rotation. Digests are not verified: the tab answers "which schemes and keys", not "is this APK intact".
+
+Security notes (in `domain`, unit tested) explain: unsigned or v1-only APKs (v1-only with target SDK 30+ fails to install), the Android debug certificate, expired certificates (not enforced by Android), SHA-1/MD5 certificate algorithms, and the manifest flags debuggable, allowBackup, usesCleartextTraffic (package-manager value, which applies the target-SDK default), testOnly and the presence of a Network Security Config. They are observations to study, not vulnerability findings.
+
+Fixtures in `data/src/test/resources/signing` are real apksigner output (v1 only, v1+v2+v3 with v4 .idsig, v3+v3.1 key rotation, unsigned); `make-fixtures.sh` regenerates them. Expected fingerprints come from `apksigner verify --print-certs`. The scanner was also cross-checked against apksigner on APKAnatomy's own debug build and the F-Droid client APK.
+
+Smoke test: open DNA for APKAnatomy itself (debug certificate, v2), for a Play-installed app (v2/v3, possibly source stamp and Play metadata), and for an imported APK (v4 not checkable).
