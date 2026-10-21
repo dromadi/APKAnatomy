@@ -66,7 +66,7 @@ private fun AnatomyApp(model: AnatomyViewModel) {
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp)) }
             val report = state.report
             if (report == null) AppList(state.apps, state.busy, model::inspect)
-            else AnatomyReportScreen(report)
+            else AnatomyReportScreen(report, model::preview)
         }
     }
 }

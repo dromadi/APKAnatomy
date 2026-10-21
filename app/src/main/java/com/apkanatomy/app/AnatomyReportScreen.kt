@@ -28,7 +28,7 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun AnatomyReportScreen(report: AnatomyReport) {
+internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (ArchiveEntry) -> FilePreview) {
     var tab by rememberSaveable(report.packageName, report.source) { mutableIntStateOf(0) }
     Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val icon = remember(report.iconPng) {
@@ -52,7 +52,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport) {
             1 -> TechnologyScreen(report)
             2 -> ComponentsScreen(report)
             3 -> PermissionsScreen(report)
-            4 -> ArchiveBrowser(report.structure)
+            4 -> ArchiveBrowser(report.structure, loadPreview)
             5 -> CodeExplorer(report.code)
             6 -> ManifestScreen(report)
             7 -> DnaScreen(report)
@@ -338,7 +338,7 @@ private fun NoteCard(note: SecurityNote) {
 }
 
 @Composable
-private fun ArchiveBrowser(s: PackageStructure) {
+private fun ArchiveBrowser(s: PackageStructure, loadPreview: suspend (ArchiveEntry) -> FilePreview) {
     var archiveIndex by rememberSaveable { mutableIntStateOf(0) }
     var prefix by rememberSaveable { mutableStateOf("") }
     var query by rememberSaveable { mutableStateOf("") }
@@ -379,9 +379,49 @@ private fun ArchiveBrowser(s: PackageStructure) {
                 Text("${entry.archive}/${entry.path}")
                 Text("Ukuran isi: ${formatSize(entry.size)}\nUkuran tersimpan: ${formatSize(entry.compressedSize)}")
                 Text(explainEntry(entry.path))
-                Text("Tahap ini menampilkan metadata file; pembaca isi file dan penelusuran kode menyusul.", style = MaterialTheme.typography.bodySmall)
+                HorizontalDivider()
+                FilePreviewView(entry, loadPreview)
             } } }, confirmButton = { TextButton(onClick = { selected = null }) { Text("Tutup") } })
     }
+}
+
+@Composable
+private fun FilePreviewView(entry: ArchiveEntry, loadPreview: suspend (ArchiveEntry) -> FilePreview) {
+    var preview by remember(entry) { mutableStateOf<FilePreview?>(null) }
+    LaunchedEffect(entry) { preview = loadPreview(entry) }
+    when (val p = preview) {
+        null -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp); Text("Membaca isi file…") }
+        is FilePreview.Text -> {
+            // Laying out hundreds of KiB in one Text stalls the UI; the copy action is the way to the full text.
+            val shown = p.text.length > MAX_PREVIEW_CHARS
+            Text(p.kind + (if (p.truncated) " · dipotong pada 256 KiB" else "") + (if (shown) " · ditampilkan $MAX_PREVIEW_CHARS karakter pertama" else ""),
+                style = MaterialTheme.typography.labelMedium)
+            Text(p.text.take(MAX_PREVIEW_CHARS), fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+        }
+        is FilePreview.Image -> {
+            val bitmap = remember(p) { decodeSampled(p.bytes, 1024)?.asImageBitmap() }
+            Text("Gambar ${p.format}" + (bitmap?.let { " · ${it.width}×${it.height} px (diperkecil bila perlu)" } ?: ""), style = MaterialTheme.typography.labelMedium)
+            if (bitmap != null) Image(bitmap, contentDescription = entry.path, modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp))
+            else Text("Gambar tidak dapat didekode oleh perangkat.")
+        }
+        is FilePreview.Hex -> {
+            Text(p.note, style = MaterialTheme.typography.labelMedium)
+            Text(p.dump, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+        }
+        is FilePreview.Unavailable -> Text(p.reason, color = MaterialTheme.colorScheme.error)
+    }
+}
+
+private const val MAX_PREVIEW_CHARS = 32_000
+
+/** Decodes with a power-of-two sample size so the longer side stays near [maxSide]. */
+private fun decodeSampled(bytes: ByteArray, maxSide: Int): android.graphics.Bitmap? {
+    val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxSide) sample *= 2
+    return android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample })
 }
 
 @Composable

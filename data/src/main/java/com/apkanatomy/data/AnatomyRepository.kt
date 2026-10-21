@@ -14,6 +14,17 @@ import java.util.zip.ZipFile
 @Suppress("DEPRECATION")
 class AnatomyRepository(private val context: Context) {
     private val pm = context.packageManager
+    /** Archives of the current report by the labels StructureScanner uses, for on-demand previews. */
+    @Volatile private var archives: Map<String, File> = emptyMap()
+    /** The imported APK is kept while its report is open so files can be previewed; deleted on the next analysis or [release]. */
+    @Volatile private var retainedImport: File? = null
+    /** Resource table of the current base APK, parsed on the first preview. */
+    @Volatile private var previewTable: Pair<File, com.apkanatomy.axml.ResourceTable?>? = null
+
+    init {
+        // A process killed while a report was open leaves its import behind.
+        context.cacheDir.listFiles { f -> f.name.startsWith("inspection-") && f.name.endsWith(".apk") }?.forEach { it.delete() }
+    }
     private val flags = PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or
         PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS or
         PackageManager.GET_PERMISSIONS or PackageManager.MATCH_DISABLED_COMPONENTS
@@ -31,12 +42,16 @@ class AnatomyRepository(private val context: Context) {
         val paths = listOfNotNull(app.sourceDir) + app.splitSourceDirs.orEmpty().toList()
         val context = coroutineContext
         val files = paths.map(::File)
+        release()
+        archives = files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap()
         report(info, "Aplikasi terinstal", StructureScanner().scan(files), DexCodeScanner().scan(files, info.packageName) { context.ensureActive() },
             File(app.sourceDir), SigningScanner().scan(File(app.sourceDir), File(app.sourceDir + ".idsig")))
     }
 
     suspend fun analyzeFile(uri: Uri): AnatomyReport = withContext(Dispatchers.IO) {
+        release()
         val file = File.createTempFile("inspection-", ".apk", context.cacheDir)
+        var kept = false
         try {
             val input = context.contentResolver.openInputStream(uri)
                 ?: error("File tidak dapat dibuka.")
@@ -54,8 +69,28 @@ class AnatomyRepository(private val context: Context) {
             }
             val context = coroutineContext
             report(info, "File APK lokal", StructureScanner().scan(listOf(file)), DexCodeScanner().scan(listOf(file), info.packageName) { context.ensureActive() },
-                file, SigningScanner().scan(file, v4Signature = null))
-        } finally { file.delete() }
+                file, SigningScanner().scan(file, v4Signature = null)).also {
+                retainedImport = file; archives = mapOf("base.apk" to file); kept = true
+            }
+        } finally { if (!kept) file.delete() }
+    }
+
+    /** Reads one file of the current report's archives for display. */
+    suspend fun preview(archive: String, path: String): FilePreview = withContext(Dispatchers.IO) {
+        val file = archives[archive] ?: return@withContext FilePreview.Unavailable("Arsip tidak lagi tersedia; buka ulang laporannya.")
+        // Binary XML in splits still points into the base table, so names come from base.apk.
+        val base = archives["base.apk"]
+        val table = previewTable?.takeIf { it.first == base }?.second
+            ?: base?.let { ResourceReader.read(it).first.also { t -> previewTable = base to t } }
+        PreviewReader.preview(file, path, table)
+    }
+
+    /** Forgets the current report's archives and deletes a retained import. */
+    fun release() {
+        archives = emptyMap()
+        previewTable = null
+        retainedImport?.delete()
+        retainedImport = null
     }
 
     private fun report(info: PackageInfo, source: String, structure: PackageStructure, code: CodeIndex,

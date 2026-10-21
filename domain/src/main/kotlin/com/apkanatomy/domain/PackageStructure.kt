@@ -30,3 +30,13 @@ fun componentLesson(kind: ComponentKind): String = when (kind) {
     ComponentKind.RECEIVER -> "Receiver menerima broadcast yang sesuai. Intent-filter membantu menelusuri pemicunya; receiver dinamis tidak selalu tercatat di manifest."
     ComponentKind.PROVIDER -> "Provider menyajikan akses data melalui content URI. Authority memberi alamatnya; izin baca/tulis dapat membatasi akses."
 }
+
+/** What a file inside the APK looks like, read on demand from the archive. */
+sealed interface FilePreview {
+    /** [kind] says how the text was obtained, e.g. "XML biner (didekode)". */
+    data class Text(val text: String, val kind: String, val truncated: Boolean) : FilePreview
+    class Image(val bytes: ByteArray, val format: String) : FilePreview
+    /** Hex and ASCII columns of the first bytes, for files with no readable form. */
+    data class Hex(val dump: String, val note: String) : FilePreview
+    data class Unavailable(val reason: String) : FilePreview
+}

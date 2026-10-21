@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.9
+# APKAnatomy 0.1.0-alpha.10
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -17,7 +17,7 @@ CI uploads the debug APK and verification reports on pushes and pull requests.
 
 ## Current limits
 
-Component and permission lists come from Android PackageManager; the raw manifest view uses the independent AXML decoder (alpha.4), and since alpha.6 intent-filters are linked to their components. Some malformed/unsupported APKs may be rejected by the platform. Split archives (.apks/.xapk) are not supported. Imported files are not retained across process death. Installed-package visibility applies only to the current profile; Play distribution requires reviewing QUERY_ALL_PACKAGES eligibility.
+Component and permission lists come from Android PackageManager; the raw manifest view uses the independent AXML decoder (alpha.4), and since alpha.6 intent-filters are linked to their components. Some malformed/unsupported APKs may be rejected by the platform. Split archives (.apks/.xapk) are not supported. Imported files are kept only while their report is open (for previews) and are not retained across process death. Installed-package visibility applies only to the current profile; Play distribution requires reviewing QUERY_ALL_PACKAGES eligibility.
 
 Signature digest verification (Android does it at install) remains out of scope. An exported component does not by itself establish a vulnerability. Protection categories describe requested permissions, not runtime grants.
 
@@ -122,3 +122,18 @@ Decoded XML now shows names instead of IDs (`@string/app_name`, `@style/Theme.FD
 Fixtures (`core/axml/src/test/resources/arsc`, README there) are aapt2 output in dense and offset16/compact form, plus a sparse table produced by `make_sparse.py` because aapt2 36 would not emit one for this input; `aapt2 dump resources` prints identical output for the dense and sparse APKs. On the F-Droid client: 4,836 resources and 45 locales in 132 ms, and the decoded `res/8G.xml` matches `aapt2 dump xmltree`.
 
 Smoke test: open Manifest for a Play Store app and check resolved names; open DNA for an app with pinning or a custom CA; check Resource & bahasa in Kulit.
+
+## Alpha.10: file previews
+
+Tapping a file in Isi APK now also shows its content, read on demand from the archive (at most 8 MiB per read, nothing extracted to disk or executed):
+
+- Binary XML (layouts, drawables, xml/) is decoded with resource names from base.apk's table, which is parsed once per report.
+- PNG, JPEG, GIF, WebP and BMP are decoded with a power-of-two sample size so the longer side stays near 1024 px.
+- Strict UTF-8 without NUL or many control characters is shown as text, up to 256 KiB read and 32,000 characters laid out; a code point split by the limit is dropped rather than rejecting the file.
+- Anything else gets a 512-byte hex/ASCII dump, with the format named when its magic number is known (Java class, DEX, ELF, ZIP, resources.arsc, gzip, SQLite, TensorFlow Lite).
+
+To make previews possible for imported APKs, the copied file is now kept while its report is open and deleted on back, on the next analysis, when the ViewModel is cleared, or at the next app start (for a process that died with a report open). Installed apps are previewed from their base and split APKs directly.
+
+Tested with unit tests on the resource demo APK and synthetic inputs (truncated binary XML, multi-byte text at the limit, image magic numbers), and on the F-Droid client: a shrunk resource file (`res/2R.xml`) decodes to a readable selector, a PNG asset previews, and `DebugProbesKt.bin` is recognised as a Java class file.
+
+Smoke test: open a layout under res/, a PNG/WebP drawable, a JSON asset and classes.dex in Isi APK; import an APK, preview a file, press back, and confirm the cache copy is gone.

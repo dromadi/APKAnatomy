@@ -33,7 +33,13 @@ class AnatomyViewModel(application: Application) : AndroidViewModel(application)
         val report = repository.analyzeFile(uri)
         mutable.update { it.copy(report = report) }
     }
-    fun back() { if (work?.isActive != true) mutable.update { it.copy(report = null, error = null) } }
+    fun back() {
+        if (work?.isActive == true) return
+        mutable.update { it.copy(report = null, error = null) }
+        repository.release()
+    }
+    suspend fun preview(entry: ArchiveEntry): FilePreview = repository.preview(entry.archive, entry.path)
+    override fun onCleared() = repository.release()
     private fun runWork(block: suspend () -> Unit) {
         if (work?.isActive == true) return
         work = viewModelScope.launch {
