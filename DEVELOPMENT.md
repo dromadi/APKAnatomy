@@ -1,8 +1,8 @@
-# APKAnatomy 0.1.0-alpha.12
+# APKAnatomy 0.1.0-alpha.13
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
-Build/check: `./gradlew :core:axml:test :domain:test :data:testDebugUnitTest :app:lintDebug :app:assembleDebug`.
+Build/check: `./gradlew :core:axml:test :domain:test :data:testDebugUnitTest :app:testDebugUnitTest :app:lintDebug :app:assembleDebug`.
 CI uploads the debug APK and verification reports on pushes and pull requests.
 
 ## Implemented
@@ -157,3 +157,15 @@ Smoke test: export an installed split app with SAI as .apks and import it; impor
 `compareReports` in domain (unit tested) covers identity (package, name, version, min/target SDK); signing (a completely different signer is flagged, since Android refuses such an update unless the key was rotated with v3; certificates and schemes added or removed; audit notes that appear or disappear); requested permissions, flagging new sensitive ones; components added or removed, exported and permission changes and deep links, flagging components that become open to all apps; SDKs (new ad or analytics SDKs are flagged) and library version changes; and size per category (changes under 1% are ignored) and native ABIs. Changes are marked +, − and ~, and ⚑ for ones worth a closer look, so meaning never relies on color alone. The comparison can be copied as Markdown.
 
 Smoke test: keep an installed app as the baseline, import an older APK of the same app, and read the Banding tab; compare two unrelated apps and check the package and signer changes are flagged.
+
+## Alpha.13: UI tests and screenshots on the JVM
+
+No emulator is needed to see the app run: `:app:testDebugUnitTest` uses Robolectric 4.17 (SDK 35, a 411×891 dp xxhdpi phone), Compose UI tests and Roborazzi 1.76 with native graphics.
+
+- `RealAnalysisScreenTest` runs the real `AnatomyRepository` (package manager, every scanner, bundle unpacking) on the data module's fixture APKs, asserts on the result and renders it: resolved resource names, the Network Security Config card, a binary XML preview dialog, certificates of the apksigner fixture, an .xapk with a mismatched split, and the Banding tab between two real analyses.
+- `RichReportScreenTest` renders every tab of a fully populated report, in light and dark themes.
+- `AppFlowTest` starts the real MainActivity with its ViewModel and checks the installed-app list.
+
+Screenshots are written to `app/build/outputs/roborazzi/` on every run (record mode, no golden comparison) and uploaded by CI with the other reports, so a change's look can be checked from the artifact. Reviewing them led to two fixes: the preview dialog was too short to read code (now up to 560 dp tall), and a missing versionName is shown as "versi tidak tercantum" instead of "v—".
+
+Robolectric fetches `android-all-instrumented` from Maven Central at test time (cached in `~/.m2`); environments that cannot reach Maven Central need that jar pre-seeded. Robolectric is not a device: rendering, package-manager behaviour and permissions are emulated, so the device smoke tests below still matter, especially for icons (Robolectric supplies blank ones) and the file pickers.

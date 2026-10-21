@@ -18,6 +18,11 @@ activity-compose = { module = "androidx.activity:activity-compose", version = "1
 lifecycle-viewmodel = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version = "2.11.0" }
 lifecycle-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version = "2.11.0" }
 junit = { module = "junit:junit", version = "4.13.2" }
+robolectric = { module = "org.robolectric:robolectric", version = "4.17" }
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version = "1.76.0" }
+roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version = "1.76.0" }
 
 dexlib = { module = "org.smali:dexlib2", version = "2.5.2" }
 smali = { module = "org.smali:smali", version = "2.5.2" }

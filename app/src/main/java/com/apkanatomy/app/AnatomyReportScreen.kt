@@ -42,7 +42,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
         Column {
             Text(report.label, style = MaterialTheme.typography.titleLarge)
             Text(report.packageName, style = MaterialTheme.typography.bodySmall)
-            Text("v${report.version} · min SDK ${report.minSdk} · target ${report.targetSdk}")
+            Text((if (report.version == "—") "versi tidak tercantum" else "v${report.version}") + " · min SDK ${report.minSdk} · target ${report.targetSdk}")
         }
     }
     PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
@@ -408,7 +408,7 @@ private fun ArchiveBrowser(s: PackageStructure, loadPreview: suspend (ArchiveEnt
     }
     selected?.let { entry ->
         AlertDialog(onDismissRequest = { selected = null }, title = { Text("Pelajari file") },
-            text = { SelectionContainer { Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            text = { SelectionContainer { Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("${entry.archive}/${entry.path}")
                 Text("Ukuran isi: ${formatSize(entry.size)}\nUkuran tersimpan: ${formatSize(entry.compressedSize)}")
                 Text(explainEntry(entry.path))
