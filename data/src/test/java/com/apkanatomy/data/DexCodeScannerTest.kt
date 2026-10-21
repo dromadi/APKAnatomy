@@ -30,6 +30,17 @@ class DexCodeScannerTest {
         val result = DexCodeScanner(CodeLimits(dexBytes = 112)).scan(listOf(apk))
         assertTrue(result.classes.isEmpty()); assertTrue(result.warnings.isNotEmpty())
     }
+    @Test fun collectsPackagesBeyondTheClassLimit() = fixture({ root ->
+        listOf("Lokhttp3/OkHttpClient;", "Lcom/example/app/a;", "Lcom/example/app/MainActivity;").forEachIndexed { i, type ->
+            File(root, "Extra$i.smali").writeText(".class public $type\n.super Ljava/lang/Object;\n")
+        }
+    }) { apk ->
+        val result = DexCodeScanner(CodeLimits(classes = 1)).scan(listOf(apk))
+        assertEquals(1, result.classes.size)
+        assertEquals(listOf("com.example.app", "okhttp3", "sample"), result.packages)
+        assertEquals(4, result.definedClasses)
+        assertEquals(1, result.shortNamedClasses)
+    }
     @Test fun rejectsCorruptDex() {
         val apk = File.createTempFile("corrupt", ".apk")
         try {
@@ -48,7 +59,8 @@ class DexCodeScannerTest {
             assertEquals(2, result.callersOf("Lsample/Demo;->download()V").size)
         } finally { split.delete() }
     }
-    private fun fixture(block: (File) -> Unit) {
+    private fun fixture(block: (File) -> Unit) = fixture({}, block)
+    private fun fixture(extra: (File) -> Unit, block: (File) -> Unit) {
         val root = Files.createTempDirectory("dex-code-test").toFile()
         try {
             val source = File(root, "Demo.smali")
@@ -65,9 +77,10 @@ class DexCodeScannerTest {
                     return-void
                 .end method
             """.trimIndent())
+            extra(root)
             val dex = File(root, "classes.dex")
             val options = SmaliOptions().apply { outputDexFile = dex.absolutePath; apiLevel = 26 }
-            assertTrue(Smali.assemble(options, source.absolutePath))
+            assertTrue(Smali.assemble(options, root.listFiles()!!.filter { it.extension == "smali" }.map { it.absolutePath }))
             val apk = File(root, "fixture.apk")
             ZipOutputStream(apk.outputStream()).use { zip -> zip.putNextEntry(ZipEntry("classes.dex")); zip.write(dex.readBytes()); zip.closeEntry() }
             block(apk)

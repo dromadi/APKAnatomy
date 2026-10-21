@@ -13,6 +13,7 @@ internal class StructureScanner(private val entryLimit: Int = 50_000) {
         val dex = mutableListOf<DexMetrics>()
         val warnings = mutableListOf<String>()
         val archives = mutableListOf<String>()
+        val versions = sortedMapOf<String, String>()
         var visited = 0
         for ((index, file) in files.withIndex()) {
             if (visited >= entryLimit) { warnings.add("Batas $entryLimit entri tercapai; hasil struktur hanya sebagian."); break }
@@ -33,6 +34,7 @@ internal class StructureScanner(private val entryLimit: Int = 50_000) {
                         if (parts.size == 3 && parts[0] == "lib" && parts[2].endsWith(".so")) {
                             libraries.add(NativeLibrary(archive, entry.name, parts[1], entry.size))
                         }
+                        readLibraryVersion(zip, entry, versions)
                         if (Regex("classes([0-9]+)?\\.dex").matches(entry.name)) {
                             val metrics = try {
                                 zip.getInputStream(entry).use { input ->
@@ -56,8 +58,26 @@ internal class StructureScanner(private val entryLimit: Int = 50_000) {
         }
         return PackageStructure(archives, entries.sortedWith(compareBy({ it.archive }, { it.path })),
             libraries.sortedWith(compareBy({ it.abi }, { it.path })), dex,
-            detectTechnologies(entries), warnings.distinct())
+            detectTechnologies(entries), warnings.distinct(), versions)
     }
+
+    /** Reads META-INF/<group>_<artifact>.version (a few bytes holding a version string). */
+    private fun readLibraryVersion(zip: ZipFile, entry: java.util.zip.ZipEntry, into: MutableMap<String, String>) {
+        val name = entry.name
+        if (!name.startsWith("META-INF/") || !name.endsWith(".version") || name.count { it == '/' } != 1) return
+        if (entry.size !in 1..128 || into.size >= 2_000) return
+        val coordinate = name.removePrefix("META-INF/").removeSuffix(".version")
+        val group = coordinate.substringBefore('_', "")
+        val artifact = coordinate.substringAfter('_', "")
+        if (group.isEmpty() || artifact.isEmpty()) return
+        // The declared size can lie; copyBounded caps what is actually inflated.
+        val version = try {
+            java.io.ByteArrayOutputStream().also { out -> zip.getInputStream(entry).use { copyBounded(it, out, 128) } }.toString(Charsets.UTF_8.name()).trim()
+        } catch (_: Exception) { return }
+        if (VERSION.matches(version)) into["$group:$artifact"] = version
+    }
+
+    private companion object { val VERSION = Regex("[0-9A-Za-z.+_-]{1,40}") }
 }
 
 internal fun parseDexHeader(bytes: ByteArray, size: Long, archive: String, path: String): DexMetrics {

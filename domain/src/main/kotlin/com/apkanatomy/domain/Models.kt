@@ -36,6 +36,7 @@ data class AnatomyReport(
     val signing: SigningReport = SigningReport(),
     /** Null when the package manager did not expose application flags. */
     val security: SecurityFlags? = null,
+    val sdks: List<DetectedSdk> = emptyList(),
 )
 /**
  * Enabled exported components that any app can reach without holding a permission.

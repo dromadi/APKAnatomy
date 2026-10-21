@@ -11,6 +11,8 @@ data class PackageStructure(
     val archives: List<String> = emptyList(), val entries: List<ArchiveEntry> = emptyList(),
     val libraries: List<NativeLibrary> = emptyList(), val dex: List<DexMetrics> = emptyList(),
     val technologies: List<Technology> = emptyList(), val warnings: List<String> = emptyList(),
+    /** "group:artifact" to version, from META-INF/<group>_<artifact>.version files left by Gradle. */
+    val libraryVersions: Map<String, String> = emptyMap(),
 )
 fun explainEntry(path: String): String = when {
     path == "AndroidManifest.xml" -> "Deklarasi identitas, komponen, izin, dan konfigurasi aplikasi. File ini biasanya berformat XML biner."

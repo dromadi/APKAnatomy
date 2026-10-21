@@ -27,7 +27,13 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
         var totalBytes = 0L
         var visited = 0
         var displayed = 0
-        fun result() = CodeIndex(classes, methods, calls, warnings.toList())
+        // Package names are gathered from every DEX that fits the byte budget, even after the
+        // class/method index is full, because SDK detection needs the whole namespace.
+        val packages = sortedSetOf<String>()
+        var definedClasses = 0
+        var shortNamed = 0
+        var indexFull = false
+        fun result() = CodeIndex(classes, methods, calls, warnings.toList(), packages.toList(), definedClasses, shortNamed)
         for ((index, file) in files.withIndex()) {
             val archive = if (index == 0) "base.apk" else file.name
             checkCancelled()
@@ -51,17 +57,24 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                             }
                             require(bytes.size.toLong() == entry.size) { "Ukuran DEX tidak cocok" }
                             val dex = DexBackedDexFile.fromInputStream(null, bytes.inputStream())
+                            for (cls in dex.classes) {
+                                val name = cls.type.removePrefix("L").removeSuffix(";")
+                                packages.add(name.substringBeforeLast('/', "").replace('/', '.'))
+                                definedClasses++
+                                if (name.substringAfterLast('/').substringBefore('$').length <= 2) shortNamed++
+                            }
+                            if (indexFull) continue
                             val prefix = preferredPackage?.takeIf { it.isNotBlank() }?.replace('.', '/')?.let { "L$it/" }
                             val ordered = if (prefix == null) dex.classes.asSequence() else
                                 dex.classes.asSequence().filter { it.type.startsWith(prefix) } +
                                     dex.classes.asSequence().filter { !it.type.startsWith(prefix) }
-                            for (cls in ordered) {
+                            classLoop@ for (cls in ordered) {
                                 checkCancelled()
-                                if (classes.size >= limits.classes) { warnings.add("Batas class tercapai; indeks hanya sebagian."); return result() }
+                                if (classes.size >= limits.classes) { warnings.add("Batas class tercapai; indeks hanya sebagian."); indexFull = true; break@classLoop }
                                 classes.add(CodeClass(cls.type, cls.superclass, cls.interfaces.toList(), archive, entry.name))
                                 for (method in cls.methods) {
                                     checkCancelled()
-                                    if (methods.size >= limits.methods) { warnings.add("Batas method tercapai; indeks hanya sebagian."); return result() }
+                                    if (methods.size >= limits.methods) { warnings.add("Batas method tercapai; indeks hanya sebagian."); indexFull = true; break@classLoop }
                                     val descriptor = ReferenceUtil.getMethodDescriptor(method)
                                     val id = "$archive:${entry.name}:$descriptor"
                                     val implementation = method.implementation

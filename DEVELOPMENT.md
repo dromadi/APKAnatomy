@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.6
+# APKAnatomy 0.1.0-alpha.7
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -92,3 +92,13 @@ Lessons explain well-known filters: launcher entry, verified App Links, web and 
 `intent_manifest.axml` (aapt2 output of `intent_manifest.xml`) covers relative names, aliases, App Links, split <data> elements, MIME filters and bound services. The parser was cross-checked on the F-Droid client manifest (36 components, 23 filters, two verified App Links).
 
 Smoke test: open Komponen for a browser or social app and check deep links; open an app with an accessibility service; confirm ⚠ permissions appear first in Izin.
+
+## Alpha.7: third-party SDKs and library versions
+
+While a DEX is loaded for the code index, the package of every class definition is recorded, including DEX files read after the class/method index is full (the 16/48 MiB byte budgets still apply). This keeps SDK detection independent of the indexing limits: on the F-Droid client, 859 packages from 24,528 classes were seen while 5,606 classes were indexed.
+
+About 60 rules in `domain/Sdk.kt` match whole package segments (`okhttp3` matches `okhttp3.internal`, not `okhttp3x`) across networking, data, media, UI, architecture, Firebase, Google services, analytics, ads, login, payments (including Midtrans and Xendit) and device integrity. Overlaps are separated (Hilt is not counted as plain Dagger, Play Integrity not as Play Core). A match means the library is bundled, not that it runs; R8 can rename packages, so a missing library is not proof of absence.
+
+`META-INF/<group>_<artifact>.version` files (up to 2,000 per APK, 128 bytes each, inflated size capped) give exact versions for many Google and AndroidX libraries; they are listed in full and attached to matching SDKs. A share of one- or two-letter class names (at least 50 classes) gives an obfuscation hint.
+
+Smoke test: open Teknologi for an app with ads or Firebase and check categories, versions and evidence; open an obfuscated release app and check the hint.

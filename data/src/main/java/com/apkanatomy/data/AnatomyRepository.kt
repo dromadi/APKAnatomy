@@ -84,7 +84,7 @@ class AnatomyRepository(private val context: Context) {
                 } catch (_: PackageManager.NameNotFoundException) { "Tidak dikenal di perangkat ini" }
                 AppPermission(name, protection)
             }, structure, code, manifestXml = manifest.xml, manifestNote = manifest.note,
-            signing = signing, security = securityFlags(app, manifest))
+            signing = signing, security = securityFlags(app, manifest), sdks = detectSdks(code.packages, structure.libraryVersions))
     }
 
     private fun securityFlags(app: ApplicationInfo, manifest: DecodedManifest) = SecurityFlags(

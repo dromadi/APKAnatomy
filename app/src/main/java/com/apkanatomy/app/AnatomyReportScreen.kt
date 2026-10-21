@@ -37,7 +37,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport) {
     key(report.packageName, report.source) {
         when (tab) {
             0 -> Overview(report) { tab = it }
-            1 -> TechnologyScreen(report.structure)
+            1 -> TechnologyScreen(report)
             2 -> ComponentsScreen(report)
             3 -> PermissionsScreen(report)
             4 -> ArchiveBrowser(report.structure)
@@ -53,7 +53,8 @@ private fun Overview(report: AnatomyReport, open: (Int) -> Unit) {
     val s = report.structure
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item { LessonCard("Mulai membedah", "Kenali teknologinya, jelajahi komponen, lalu telusuri file yang menyusunnya. Hasil ini berasal dari analisis statis paket; alur eksekusi belum direkam.") }
-        item { LessonCard("Teknologi", s.technologies.joinToString { it.name }.ifEmpty { "Belum ada penanda yang dikenali. Ini tidak otomatis berarti aplikasi pure native." }, onClick = { open(1) }) }
+        item { LessonCard("Teknologi", s.technologies.joinToString { it.name }.ifEmpty { "Belum ada penanda framework yang dikenali. Ini tidak otomatis berarti aplikasi pure native." } +
+            "\n${report.sdks.size} SDK/library dikenali" + (report.sdks.takeIf { it.isNotEmpty() }?.joinToString(prefix = ": ") { it.name }?.take(160) ?: "."), onClick = { open(1) }) }
         item { LessonCard("Kerangka", "${report.components.size} komponen · ${report.permissions.size} izin yang diminta · ${report.components.openToAllApps().size} exported tanpa izin · ${report.components.sumOf { c -> c.intentFilters.count { it.isDeepLink } }} deep link · ${report.permissions.count { sensitivePermissionLesson(it.name) != null }} izin sensitif. Pelajari titik masuk layar, kerja tanpa layar, broadcast, dan akses data.", onClick = { open(2) }) }
         item {
             val attention = remember(report) { securityNotes(report.security, report.signing, System.currentTimeMillis()).count { it.level == NoteLevel.PERHATIAN } }
@@ -69,9 +70,27 @@ private fun Overview(report: AnatomyReport, open: (Int) -> Unit) {
 }
 
 @Composable
-private fun TechnologyScreen(s: PackageStructure) {
+private fun TechnologyScreen(report: AnatomyReport) {
+    val s = report.structure
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item { LessonCard("Petunjuk teknologi", "Pencocokan memakai nama file dan lokasi di APK. Library dapat berasal dari satu modul atau pihak ketiga; bukti ini belum memetakan seluruh arsitektur aplikasi.") }
+        item { Text("SDK & library pihak ketiga", style = MaterialTheme.typography.titleMedium) }
+        item { Text("Dikenali dari nama package di DEX. Kecocokan berarti library ikut dibundel, belum tentu aktif dipakai. R8 dapat mengganti nama package, jadi library yang tidak muncul belum tentu tidak ada.", style = MaterialTheme.typography.bodySmall) }
+        obfuscationHint(report.code)?.let { hint -> item { LessonCard("Obfuskasi", hint) } }
+        if (report.sdks.isEmpty()) item { Text("Tidak ada SDK yang cocok dengan aturan saat ini.") }
+        report.sdks.groupBy { it.category }.forEach { (category, sdks) ->
+            item(key = "sdk-category:$category") { Text(category, style = MaterialTheme.typography.titleSmall) }
+            items(sdks, key = { "sdk:${it.name}" }) { sdk ->
+                LessonCard(sdk.name, sdk.explanation +
+                    (if (sdk.versions.isNotEmpty()) "\nVersi: ${sdk.versions.joinToString()}" else "") +
+                    "\nBukti: ${sdk.evidence.joinToString()}" + (if (sdk.packageCount > sdk.evidence.size) " (+${sdk.packageCount - sdk.evidence.size} package lain)" else ""))
+            }
+        }
+        if (s.libraryVersions.isNotEmpty()) item {
+            LessonCard("Library tercatat (${s.libraryVersions.size})", "Gradle menyertakan file META-INF/<group>_<artifact>.version untuk banyak library Google dan AndroidX. Daftar ini lebih pasti daripada pencocokan nama package.\n\n" +
+                s.libraryVersions.entries.take(200).joinToString("\n") { (artifact, version) -> "$artifact $version" } +
+                (if (s.libraryVersions.size > 200) "\n… dan ${s.libraryVersions.size - 200} lainnya" else ""))
+        }
         if (s.technologies.isEmpty()) item { Text("Tidak ada penanda teknologi yang dikenali oleh aturan saat ini.") }
         items(s.technologies, key = { it.name }) { technology ->
             LessonCard(technology.name, technology.explanation + "\n\nBukti:\n" + technology.evidence.joinToString("\n"))
