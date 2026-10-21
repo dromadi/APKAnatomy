@@ -1,11 +1,10 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 android {
     namespace = "com.apkanatomy.app"
-    compileSdk = 35
+    compileSdk = 37
     defaultConfig {
         applicationId = "com.apkanatomy.app"
         minSdk = 26
@@ -15,8 +14,8 @@ android {
     }
     buildFeatures { compose = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    kotlinOptions { jvmTarget = "17" }
 }
+kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 dependencies {
     implementation(project(":domain"))
     implementation(project(":data"))

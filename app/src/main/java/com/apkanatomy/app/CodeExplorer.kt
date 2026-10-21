@@ -77,7 +77,7 @@ private fun MethodDetail(index: CodeIndex, method: CodeMethod,
     back: () -> Unit, open: (String) -> Unit) {
     var tab by rememberSaveable(method.id) { mutableIntStateOf(0) }
     TextButton(onClick = back) { Text("Kembali") }
-    TabRow(selectedTabIndex = tab) {
+    PrimaryTabRow(selectedTabIndex = tab) {
         listOf("Instruksi", "Memanggil", "Find usage").forEachIndexed { i, label -> Tab(tab == i, { tab = i }, text = { Text(label) }) }
     }
     val outgoing = remember(index, method) { index.callsFrom(method.id) }

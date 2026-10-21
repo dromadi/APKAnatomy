@@ -1,6 +1,6 @@
 # APKAnatomy 0.1.0-alpha.4
 
-Open the project in Android Studio with JDK 17 and Android SDK 35. The included wrapper pins Gradle 8.9 with a distribution checksum.
+Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
 Build/check: `./gradlew :core:axml:test :domain:test :data:testDebugUnitTest :app:lintDebug :app:assembleDebug`.
 CI uploads the debug APK and verification reports on pushes and pull requests.

@@ -1,5 +1,6 @@
 package com.apkanatomy.app
 
+import android.content.ClipData
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
@@ -12,14 +13,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import com.apkanatomy.domain.*
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun AnatomyReportScreen(report: AnatomyReport) {
@@ -27,7 +29,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport) {
     Text(report.label, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 12.dp))
     Text(report.packageName, style = MaterialTheme.typography.bodySmall)
     Text("v${report.version} · min SDK ${report.minSdk} · target ${report.targetSdk}")
-    ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
+    PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
         listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Isi APK", "Kode", "Manifest").forEachIndexed { index, label ->
             Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label) })
         }
@@ -90,7 +92,7 @@ private fun ComponentsScreen(report: AnatomyReport) {
     var exportedOnly by rememberSaveable { mutableStateOf(false) }
     var kind by rememberSaveable { mutableIntStateOf(-1) }
     OutlinedTextField(query, { query = it }, label = { Text("Cari komponen") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    ScrollableTabRow(selectedTabIndex = kind + 1, edgePadding = 0.dp) {
+    PrimaryScrollableTabRow(selectedTabIndex = kind + 1, edgePadding = 0.dp) {
         listOf("Semua", "Activity", "Service", "Receiver", "Provider").forEachIndexed { index, label ->
             Tab(selected = kind + 1 == index, onClick = { kind = index - 1 }, text = { Text(label) })
         }
@@ -127,13 +129,14 @@ private fun PermissionsScreen(report: AnatomyReport) {
 private fun ManifestScreen(report: AnatomyReport) {
     val xml = report.manifestXml
     val lines = remember(xml) { xml?.trimEnd()?.lines().orEmpty() }
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
     LazyColumn(contentPadding = PaddingValues(vertical = 12.dp)) {
         item {
             LessonCard("Pelajari manifest", "Di dalam APK, AndroidManifest.xml disimpan sebagai XML biner. APKAnatomy mendekodenya sendiri tanpa PackageManager, sehingga intent-filter, meta-data, dan atribut lain ikut terlihat. Referensi resource tampil sebagai ID seperti @0x7f0a0001 karena resources.arsc belum dibaca.")
         }
         if (xml == null) item { Text(report.manifestNote ?: "Manifest tidak tersedia.", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp)) }
-        else item { TextButton(onClick = { clipboard.setText(AnnotatedString(xml)) }) { Text("Salin XML") } }
+        else item { TextButton(onClick = { scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("AndroidManifest.xml", xml))) } }) { Text("Salin XML") } }
         itemsIndexed(lines) { index, line ->
             Row {
                 Text("${index + 1}", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.outline,
@@ -152,7 +155,7 @@ private fun ArchiveBrowser(s: PackageStructure) {
     var selected by remember { mutableStateOf<ArchiveEntry?>(null) }
     val archive = s.archives.getOrNull(archiveIndex)
     if (s.archives.size > 1) {
-        ScrollableTabRow(selectedTabIndex = archiveIndex, edgePadding = 0.dp) {
+        PrimaryScrollableTabRow(selectedTabIndex = archiveIndex, edgePadding = 0.dp) {
             s.archives.forEachIndexed { index, name -> Tab(archiveIndex == index, { archiveIndex = index; prefix = ""; query = "" }, text = { Text(name) }) }
         }
     }
