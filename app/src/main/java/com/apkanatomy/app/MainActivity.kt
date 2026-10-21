@@ -58,7 +58,7 @@ private fun AnatomyApp(model: AnatomyViewModel) {
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (state.report != null) OutlinedButton(onClick = model::back, enabled = !state.busy) { Text("Kembali") }
-                state.report?.let { ExportMenu(it) }
+                state.report?.let { ExportMenu(it, state.baseline != null, model::keepAsBaseline, model::clearBaseline) }
                 Button(onClick = { picker.launch(arrayOf("*/*")) }, enabled = !state.busy) { Text("Buka APK / bundle") }
                 if (state.report == null) TextButton(onClick = { model.reload() }, enabled = !state.busy) { Text("Muat ulang") }
             }
@@ -66,7 +66,7 @@ private fun AnatomyApp(model: AnatomyViewModel) {
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp)) }
             val report = state.report
             if (report == null) AppList(state.apps, state.busy, model::inspect)
-            else AnatomyReportScreen(report, model::preview)
+            else AnatomyReportScreen(report, model::preview, state.baseline.takeUnless { state.reportIsBaseline }, model::clearBaseline)
         }
     }
 }
@@ -114,7 +114,7 @@ private fun PackageIcon(packageName: String) {
 }
 
 @Composable
-private fun ExportMenu(report: AnatomyReport) {
+private fun ExportMenu(report: AnatomyReport, hasBaseline: Boolean, keepAsBaseline: () -> Unit, clearBaseline: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var expanded by remember { mutableStateOf(false) }
@@ -133,8 +133,14 @@ private fun ExportMenu(report: AnatomyReport) {
     val saveJson = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json"), ::save)
     val baseName = "apkanatomy-${report.packageName}-${report.version}".replace(Regex("[^A-Za-z0-9._-]"), "_")
     Box {
-        OutlinedButton(onClick = { expanded = true }) { Text("Ekspor") }
+        OutlinedButton(onClick = { expanded = true }) { Text("Aksi") }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(text = { Text("Jadikan pembanding") }, onClick = {
+                expanded = false; keepAsBaseline()
+                Toast.makeText(context, "Disimpan sebagai pembanding. Buka aplikasi atau APK lain, lalu lihat tab Banding.", Toast.LENGTH_LONG).show()
+            })
+            if (hasBaseline) DropdownMenuItem(text = { Text("Hapus pembanding") }, onClick = { expanded = false; clearBaseline() })
+            HorizontalDivider()
             DropdownMenuItem(text = { Text("Simpan Markdown") }, onClick = {
                 expanded = false; pending = report.toMarkdown(System.currentTimeMillis()); saveMarkdown.launch("$baseName.md")
             })

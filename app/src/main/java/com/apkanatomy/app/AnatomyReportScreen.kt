@@ -28,8 +28,12 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (ArchiveEntry) -> FilePreview) {
-    var tab by rememberSaveable(report.packageName, report.source) { mutableIntStateOf(0) }
+internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (ArchiveEntry) -> FilePreview,
+    baseline: AnatomyReport? = null, clearBaseline: () -> Unit = {}) {
+    var selectedTab by rememberSaveable(report.packageName, report.source) { mutableIntStateOf(0) }
+    val tabs = listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Isi APK", "Kode", "Manifest", "DNA", "Kulit") + listOfNotNull(baseline?.let { "Banding" })
+    // The Banding tab disappears when the baseline is cleared.
+    val tab = selectedTab.coerceAtMost(tabs.lastIndex)
     Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val icon = remember(report.iconPng) {
             report.iconPng?.let { bytes -> android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
@@ -42,13 +46,13 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
         }
     }
     PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
-        listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Isi APK", "Kode", "Manifest", "DNA", "Kulit").forEachIndexed { index, label ->
-            Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label) })
+        tabs.forEachIndexed { index, label ->
+            Tab(selected = tab == index, onClick = { selectedTab = index }, text = { Text(label) })
         }
     }
     key(report.packageName, report.source) {
         when (tab) {
-            0 -> Overview(report) { tab = it }
+            0 -> Overview(report) { selectedTab = it }
             1 -> TechnologyScreen(report)
             2 -> ComponentsScreen(report)
             3 -> PermissionsScreen(report)
@@ -57,6 +61,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
             6 -> ManifestScreen(report)
             7 -> DnaScreen(report)
             8 -> SkinScreen(report)
+            9 -> baseline?.let { CompareScreen(it, report, clearBaseline) }
         }
     }
 }
@@ -318,6 +323,34 @@ private fun SizeBar(slice: SizeSlice, total: Long) {
         }
         Text("${slice.files} file · di ZIP ${formatSize(slice.compressedSize)} · ${slice.category.lesson}",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun CompareScreen(old: AnatomyReport, new: AnatomyReport, clearBaseline: () -> Unit) {
+    val sections = remember(old, new) { compareReports(old, new, System.currentTimeMillis()) }
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+        item {
+            LessonCard("Pelajari perubahan", "Lama: ${old.label} ${old.version} (${old.source})\nBaru: ${new.label} ${new.version} (${new.source})\n\n" +
+                "Membandingkan dua versi menunjukkan apa yang dibawa sebuah update: izin, komponen, SDK, sertifikat, dan ukuran. Tanda + ditambah, − dihapus, ~ berubah; ⚑ perlu diperhatikan.")
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("Perbandingan", diffToMarkdown(old, new, sections)))) } }) { Text("Salin Markdown") }
+                TextButton(onClick = clearBaseline) { Text("Hapus pembanding") }
+            }
+        }
+        if (sections.isEmpty()) item { Text("Tidak ada perbedaan yang terdeteksi.") }
+        sections.forEach { section ->
+            item(key = "diff:${section.title}") { Text(section.title, style = MaterialTheme.typography.titleMedium) }
+            items(section.changes) { change ->
+                Text("${change.kind.symbol} ${change.text}" + if (change.attention) "  ⚑" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (change.attention) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+            }
+        }
     }
 }
 

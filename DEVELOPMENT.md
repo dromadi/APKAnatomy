@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.11
+# APKAnatomy 0.1.0-alpha.12
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -149,3 +149,11 @@ The whole import folder stays while the report is open (previews work for splits
 Fixtures (`data/src/test/resources/bundle`) are bundles assembled from aapt2-built, apksigner-signed APKs: a bundletool-layout .apks with toc.pb and a standalone variant, and an APKPure-layout .xapk with an OBB and one split signed by a different key. A zip-slip attempt stays inside the output folder. Real store bundles were not available in this environment; a device smoke test with exported .apks/.xapk/.apkm files is still needed.
 
 Smoke test: export an installed split app with SAI as .apks and import it; import an .xapk and an .apkm; check Isi APK lists every split and that previews open files from splits.
+
+## Alpha.12: comparing two reports
+
+"Aksi → Jadikan pembanding" keeps the open report as a baseline; any report opened afterwards gets a Banding tab listing what changed from the baseline. The baseline is slimmed first (`asBaseline`: no code listing or raw manifest, package list and class counts kept), so holding it costs little memory. "Ekspor" moved into the same Aksi menu.
+
+`compareReports` in domain (unit tested) covers identity (package, name, version, min/target SDK); signing (a completely different signer is flagged, since Android refuses such an update unless the key was rotated with v3; certificates and schemes added or removed; audit notes that appear or disappear); requested permissions, flagging new sensitive ones; components added or removed, exported and permission changes and deep links, flagging components that become open to all apps; SDKs (new ad or analytics SDKs are flagged) and library version changes; and size per category (changes under 1% are ignored) and native ABIs. Changes are marked +, − and ~, and ⚑ for ones worth a closer look, so meaning never relies on color alone. The comparison can be copied as Markdown.
+
+Smoke test: keep an installed app as the baseline, import an older APK of the same app, and read the Banding tab; compare two unrelated apps and check the package and signer changes are flagged.
