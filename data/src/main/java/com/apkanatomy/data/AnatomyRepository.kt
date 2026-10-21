@@ -16,14 +16,14 @@ class AnatomyRepository(private val context: Context) {
     private val pm = context.packageManager
     /** Archives of the current report by the labels StructureScanner uses, for on-demand previews. */
     @Volatile private var archives: Map<String, File> = emptyMap()
-    /** The imported APK is kept while its report is open so files can be previewed; deleted on the next analysis or [release]. */
+    /** The import folder (APK or unpacked bundle) is kept while its report is open for previews; deleted on the next analysis or [release]. */
     @Volatile private var retainedImport: File? = null
     /** Resource table of the current base APK, parsed on the first preview. */
     @Volatile private var previewTable: Pair<File, com.apkanatomy.axml.ResourceTable?>? = null
 
     init {
         // A process killed while a report was open leaves its import behind.
-        context.cacheDir.listFiles { f -> f.name.startsWith("inspection-") && f.name.endsWith(".apk") }?.forEach { it.delete() }
+        context.cacheDir.listFiles { f -> f.name.startsWith("inspection-") }?.forEach { it.deleteRecursively() }
     }
     private val flags = PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or
         PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS or
@@ -45,34 +45,50 @@ class AnatomyRepository(private val context: Context) {
         release()
         archives = files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap()
         report(info, "Aplikasi terinstal", StructureScanner().scan(files), DexCodeScanner().scan(files, info.packageName) { context.ensureActive() },
-            File(app.sourceDir), SigningScanner().scan(File(app.sourceDir), File(app.sourceDir + ".idsig")))
+            File(app.sourceDir), scanSigning(File(app.sourceDir), files.drop(1), File(app.sourceDir + ".idsig")))
     }
 
+    /** Analyzes a single APK or a split bundle (.apks, .xapk, .apkm) picked through the Storage Access Framework. */
     suspend fun analyzeFile(uri: Uri): AnatomyReport = withContext(Dispatchers.IO) {
         release()
-        val file = File.createTempFile("inspection-", ".apk", context.cacheDir)
+        val work = File(context.cacheDir, "inspection-${java.util.UUID.randomUUID()}").apply { mkdirs() }
         var kept = false
         try {
+            val imported = File(work, "import.apk")
             val input = context.contentResolver.openInputStream(uri)
                 ?: error("File tidak dapat dibuka.")
-            input.use { source -> file.outputStream().use { copyBounded(source, it, 512L * 1024 * 1024) } }
-            ZipFile(file).use { zip ->
-                val manifest = zip.getEntry("AndroidManifest.xml")
-                    ?: error("File bukan APK: manifest tidak ditemukan.")
-                require(manifest.size in 1..(8L * 1024 * 1024)) { "Ukuran manifest tidak valid." }
+            input.use { source -> imported.outputStream().use { copyBounded(source, it, 512L * 1024 * 1024) } }
+            val isApk = try { ZipFile(imported).use { it.getEntry("AndroidManifest.xml") != null } }
+                catch (_: java.util.zip.ZipException) { error("File bukan APK atau bundle APK (bukan arsip ZIP).") }
+            val (base, splits, bundle) = if (isApk) {
+                ZipFile(imported).use { zip ->
+                    require(zip.getEntry("AndroidManifest.xml").size in 1..(8L * 1024 * 1024)) { "Ukuran manifest tidak valid." }
+                }
+                Triple(imported, emptyList<File>(), null)
+            } else {
+                val extracted = try { BundleExtractor().extract(imported, File(work, "apks")) }
+                    catch (e: BundleExtractor.BundleException) { error(e.message ?: "Bundle tidak valid.") }
+                imported.delete()
+                Triple(extracted.base, extracted.splits, extracted)
             }
-            val info = pm.getPackageArchiveInfo(file.absolutePath, flags)
-                ?: error("APK tidak didukung atau manifest rusak. Pilih APK tunggal, bukan XAPK/APKS.")
+            val info = pm.getPackageArchiveInfo(base.absolutePath, flags)
+                ?: error("APK tidak didukung atau manifest rusak.")
             info.applicationInfo?.apply {
-                sourceDir = file.absolutePath
-                publicSourceDir = file.absolutePath
+                sourceDir = base.absolutePath
+                publicSourceDir = base.absolutePath
+                splitSourceDirs = splits.map { it.absolutePath }.toTypedArray().takeIf { it.isNotEmpty() }
             }
+            val files = listOf(base) + splits
             val context = coroutineContext
-            report(info, "File APK lokal", StructureScanner().scan(listOf(file)), DexCodeScanner().scan(listOf(file), info.packageName) { context.ensureActive() },
-                file, SigningScanner().scan(file, v4Signature = null)).also {
-                retainedImport = file; archives = mapOf("base.apk" to file); kept = true
+            val structure = StructureScanner().scan(files).let { it.copy(warnings = bundle?.skipped.orEmpty() + it.warnings) }
+            val source = bundle?.let { "${it.format} (${files.size} APK)" } ?: "File APK lokal"
+            report(info, source, structure, DexCodeScanner().scan(files, info.packageName) { context.ensureActive() },
+                base, scanSigning(base, splits, v4Signature = null)).also {
+                retainedImport = work
+                archives = files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap()
+                kept = true
             }
-        } finally { if (!kept) file.delete() }
+        } finally { if (!kept) work.deleteRecursively() }
     }
 
     /** Reads one file of the current report's archives for display. */
@@ -89,7 +105,7 @@ class AnatomyRepository(private val context: Context) {
     fun release() {
         archives = emptyMap()
         previewTable = null
-        retainedImport?.delete()
+        retainedImport?.deleteRecursively()
         retainedImport = null
     }
 

@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.10
+# APKAnatomy 0.1.0-alpha.11
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -17,7 +17,7 @@ CI uploads the debug APK and verification reports on pushes and pull requests.
 
 ## Current limits
 
-Component and permission lists come from Android PackageManager; the raw manifest view uses the independent AXML decoder (alpha.4), and since alpha.6 intent-filters are linked to their components. Some malformed/unsupported APKs may be rejected by the platform. Split archives (.apks/.xapk) are not supported. Imported files are kept only while their report is open (for previews) and are not retained across process death. Installed-package visibility applies only to the current profile; Play distribution requires reviewing QUERY_ALL_PACKAGES eligibility.
+Component and permission lists come from Android PackageManager; the raw manifest view uses the independent AXML decoder (alpha.4), and since alpha.6 intent-filters are linked to their components. Some malformed/unsupported APKs may be rejected by the platform. Split bundles (.apks/.xapk/.apkm) are supported since alpha.11; encrypted APKM files are not. Imported files are kept only while their report is open (for previews) and are not retained across process death. Installed-package visibility applies only to the current profile; Play distribution requires reviewing QUERY_ALL_PACKAGES eligibility.
 
 Signature digest verification (Android does it at install) remains out of scope. An exported component does not by itself establish a vulnerability. Protection categories describe requested permissions, not runtime grants.
 
@@ -137,3 +137,15 @@ To make previews possible for imported APKs, the copied file is now kept while i
 Tested with unit tests on the resource demo APK and synthetic inputs (truncated binary XML, multi-byte text at the limit, image magic numbers), and on the F-Droid client: a shrunk resource file (`res/2R.xml`) decodes to a readable selector, a PNG asset previews, and `DebugProbesKt.bin` is recognised as a Java class file.
 
 Smoke test: open a layout under res/, a PNG/WebP drawable, a JSON asset and classes.dex in Isi APK; import an APK, preview a file, press back, and confirm the cache copy is gone.
+
+## Alpha.11: split bundles
+
+"Buka APK / bundle" now accepts .apks (bundletool, SAI), .xapk (APKPure) and .apkm (APKMirror) as well as single APKs. A picked ZIP with an AndroidManifest.xml is a single APK; otherwise its .apk entries are unpacked into a per-import cache folder (at most 64 APKs, 512 MiB each and 1 GiB in total). Output files use only a sanitised base name of each entry, so an entry such as `../../x.apk` cannot write outside the folder. bundletool standalone variants and OBB files are skipped with a note.
+
+The base APK is the one whose manifest has no `split` attribute, whatever it is named; a bundle with no base or with several is rejected, and splits declaring another package are skipped. The report then covers base and splits like an installed split app: structure, DEX code and SDKs across all of them, the base manifest and resources. Every split's signer is compared with the base's (certificates sharing no SHA-256): mismatching or unsigned splits get a DNA note, because Android refuses to install such a set; the same check now runs for installed split apps.
+
+The whole import folder stays while the report is open (previews work for splits) and is deleted on back, the next analysis, ViewModel clearing or next app start.
+
+Fixtures (`data/src/test/resources/bundle`) are bundles assembled from aapt2-built, apksigner-signed APKs: a bundletool-layout .apks with toc.pb and a standalone variant, and an APKPure-layout .xapk with an OBB and one split signed by a different key. A zip-slip attempt stays inside the output folder. Real store bundles were not available in this environment; a device smoke test with exported .apks/.xapk/.apkm files is still needed.
+
+Smoke test: export an installed split app with SAI as .apks and import it; import an .xapk and an .apkm; check Isi APK lists every split and that previews open files from splits.

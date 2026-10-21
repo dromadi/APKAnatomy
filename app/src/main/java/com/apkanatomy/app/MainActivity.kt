@@ -59,7 +59,7 @@ private fun AnatomyApp(model: AnatomyViewModel) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (state.report != null) OutlinedButton(onClick = model::back, enabled = !state.busy) { Text("Kembali") }
                 state.report?.let { ExportMenu(it) }
-                Button(onClick = { picker.launch(arrayOf("*/*")) }, enabled = !state.busy) { Text("Buka APK") }
+                Button(onClick = { picker.launch(arrayOf("*/*")) }, enabled = !state.busy) { Text("Buka APK / bundle") }
                 if (state.report == null) TextButton(onClick = { model.reload() }, enabled = !state.busy) { Text("Muat ulang") }
             }
             if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())

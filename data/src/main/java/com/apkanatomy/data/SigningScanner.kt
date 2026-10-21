@@ -185,3 +185,19 @@ internal class SigningScanner(private val maxBlockBytes: Long = 16L * 1024 * 102
         }
     }
 }
+
+/** Scans the base and every split, and records splits whose certificates share nothing with the base's. */
+internal fun scanSigning(base: File, splits: List<File>, v4Signature: File?): SigningReport {
+    val report = SigningScanner().scan(base, v4Signature)
+    val baseCerts = report.certificates.map { it.sha256 }.toSet()
+    if (baseCerts.isEmpty()) return report
+    val mismatched = splits.mapNotNull { split ->
+        val certs = SigningScanner().scan(split, null).certificates.map { it.sha256 }.toSet()
+        when {
+            certs.isEmpty() -> "${split.name} (tidak bertanda tangan)"
+            certs.none { it in baseCerts } -> split.name
+            else -> null
+        }
+    }
+    return report.copy(mismatchedSplits = mismatched)
+}

@@ -25,6 +25,8 @@ data class SigningReport(
     /** Whether a v4 .idsig file could be looked for; false for a single imported APK. */
     val v4Checked: Boolean = false,
     val warnings: List<String> = emptyList(),
+    /** Split APKs whose signer differs from the base (or that are unsigned); Android refuses such a set. */
+    val mismatchedSplits: List<String> = emptyList(),
 )
 
 data class SecurityFlags(
@@ -74,6 +76,8 @@ fun securityNotes(flags: SecurityFlags?, signing: SigningReport, now: Long, nsc:
             add(SecurityNote(NoteLevel.INFO, "Hanya skema v1", "Skema v1 hanya melindungi isi file di dalam ZIP, bukan seluruh arsip. Skema v2+ memverifikasi APK sebagai satu kesatuan dan lebih cepat diperiksa."))
         else -> add(SecurityNote(NoteLevel.BAIK, "Tanda tangan modern", "Ada skema ${schemes.filter { it != SignatureScheme.V1 && it != SignatureScheme.SOURCE_STAMP }.joinToString { it.label }} yang melindungi seluruh arsip APK."))
     }
+    if (signing.mismatchedSplits.isNotEmpty()) add(SecurityNote(NoteLevel.PERHATIAN, "Split dengan penandatangan berbeda",
+        "Semua APK satu aplikasi wajib ditandatangani kunci yang sama. Berbeda dari base: ${signing.mismatchedSplits.joinToString()}. Android menolak memasang kombinasi ini; bundle mungkin dirakit ulang pihak lain."))
     if (signing.keyRotation) add(SecurityNote(NoteLevel.INFO, "Rotasi kunci",
         "Skema v3 membawa riwayat kunci (proof-of-rotation): kunci penandatangan pernah diganti, dan perangkat baru mengenali kunci lama sebagai pendahulunya."))
     signing.certificates.filter { it.isAndroidDebug }.forEach { _ ->

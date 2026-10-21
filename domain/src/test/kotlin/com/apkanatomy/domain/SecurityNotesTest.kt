@@ -13,6 +13,11 @@ class SecurityNotesTest {
     @Test fun unsignedApkIsFlagged() {
         assertEquals(NoteLevel.PERHATIAN to "Tidak bertanda tangan", titles(null, SigningReport()).single())
     }
+    @Test fun mismatchedSplitSignersAreFlagged() {
+        val note = securityNotes(null, SigningReport(setOf(SignatureScheme.V2), mismatchedSplits = listOf("config.xxhdpi.apk")), now)[1]
+        assertEquals(NoteLevel.PERHATIAN to "Split dengan penandatangan berbeda", note.level to note.title)
+        assertTrue(note.explanation.contains("config.xxhdpi.apk"))
+    }
     @Test fun unreadableBlockIsNotCalledUnsigned() {
         assertEquals("Tanda tangan tidak terbaca", titles(null, SigningReport(warnings = listOf("rusak"))).single().second)
     }
