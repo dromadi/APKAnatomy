@@ -34,11 +34,33 @@ data class SecurityFlags(
     val networkSecurityConfig: String? = null,
 )
 
+/** One scope of a Network Security Config: base-config, a domain-config, or debug-overrides. */
+data class NscScope(
+    /** Domains with "*." when includeSubdomains is set; empty for base-config and debug-overrides. */
+    val domains: List<String> = emptyList(),
+    /** Null when the scope does not set it (inherits). */
+    val cleartextPermitted: Boolean? = null,
+    /** Certificate sources: "system", "user", or a resource such as "@raw/company_ca"; null when inherited. */
+    val trustAnchors: List<String>? = null,
+    val pins: Int = 0,
+    val pinExpiration: String? = null,
+    /** <certificateTransparency enabled="..."> when declared (newer platform versions). */
+    val certificateTransparency: Boolean? = null,
+)
+
+data class NetworkSecurityConfig(
+    /** Path inside the APK; R8 may have shortened it (e.g. res/8G.xml). */
+    val file: String,
+    val base: NscScope? = null,
+    val domains: List<NscScope> = emptyList(),
+    val debugOverrides: NscScope? = null,
+)
+
 enum class NoteLevel { BAIK, INFO, PERHATIAN }
 data class SecurityNote(val level: NoteLevel, val title: String, val explanation: String)
 
 /** Educational reading of the signing and manifest flags; observations, not a vulnerability verdict. */
-fun securityNotes(flags: SecurityFlags?, signing: SigningReport, now: Long): List<SecurityNote> = buildList {
+fun securityNotes(flags: SecurityFlags?, signing: SigningReport, now: Long, nsc: NetworkSecurityConfig? = null): List<SecurityNote> = buildList {
     val schemes = signing.schemes
     when {
         schemes.isEmpty() && signing.warnings.isEmpty() -> add(SecurityNote(NoteLevel.PERHATIAN, "Tidak bertanda tangan",
@@ -70,10 +92,46 @@ fun securityNotes(flags: SecurityFlags?, signing: SigningReport, now: Long): Lis
     add(if (flags.allowBackup) SecurityNote(NoteLevel.INFO, "android:allowBackup = true",
             "Data aplikasi boleh ikut dicadangkan (cloud backup dan transfer perangkat). Untuk target SDK 31 ke atas, adb backup tidak lagi menyertakan data aplikasi yang tidak debuggable.")
         else SecurityNote(NoteLevel.BAIK, "Backup dinonaktifkan", "Data aplikasi tidak ikut dicadangkan oleh sistem."))
-    add(if (flags.cleartextTraffic) SecurityNote(NoteLevel.PERHATIAN, "Lalu lintas HTTP diizinkan",
-            "Manifest mengizinkan koneksi tanpa enkripsi (cleartext). " +
-                (if (flags.networkSecurityConfig != null) "Network Security Config (${flags.networkSecurityConfig}) tetap dapat membatasinya per domain." else "Tidak ada Network Security Config yang mempersempitnya."))
-        else SecurityNote(NoteLevel.BAIK, "Cleartext tidak diizinkan", "Secara default aplikasi hanya memakai koneksi terenkripsi." +
-            (flags.networkSecurityConfig?.let { " Network Security Config ($it) dapat membuat pengecualian per domain." } ?: "")))
+    // With a Network Security Config, android:usesCleartextTraffic is ignored and base-config decides (default: target SDK < 28).
+    val cleartext = if (nsc != null) nsc.base?.cleartextPermitted ?: (flags.targetSdk < 28) else flags.cleartextTraffic
+    val source = if (nsc != null) "Network Security Config (${nsc.file})" else "Manifest"
+    add(if (cleartext) SecurityNote(NoteLevel.PERHATIAN, "Lalu lintas HTTP diizinkan",
+            "$source mengizinkan koneksi tanpa enkripsi (cleartext) secara umum." +
+                (if (nsc == null && flags.networkSecurityConfig != null) " Network Security Config (${flags.networkSecurityConfig}) dapat membatasinya per domain." else ""))
+        else SecurityNote(NoteLevel.BAIK, "Cleartext tidak diizinkan", "$source membatasi aplikasi ke koneksi terenkripsi secara umum."))
+    if (nsc != null) addAll(networkNotes(nsc, flags.targetSdk, now))
+    else if (flags.targetSdk < 24) add(SecurityNote(NoteLevel.PERHATIAN, "CA pengguna dipercaya (target SDK ${flags.targetSdk})",
+        "Aplikasi dengan target SDK di bawah 24 tanpa Network Security Config mempercayai sertifikat CA yang dipasang pengguna, sehingga lalu lintas HTTPS-nya dapat diintersep dengan proxy."))
     if (flags.testOnly) add(SecurityNote(NoteLevel.INFO, "android:testOnly = true", "Build khusus pengujian; hanya dapat dipasang lewat adb dengan opsi -t."))
 }
+
+private fun networkNotes(nsc: NetworkSecurityConfig, targetSdk: Int, now: Long): List<SecurityNote> = buildList {
+    val baseAnchors = nsc.base?.trustAnchors ?: if (targetSdk < 24) listOf("system", "user") else listOf("system")
+    if ("user" in baseAnchors) add(SecurityNote(NoteLevel.PERHATIAN, "CA pengguna dipercaya",
+        "Konfigurasi dasar mempercayai sertifikat CA yang dipasang pengguna; lalu lintas HTTPS dapat diintersep dengan proxy yang sertifikatnya dipasang di perangkat."))
+    nsc.domains.filter { "user" in it.trustAnchors.orEmpty() }.forEach {
+        add(SecurityNote(NoteLevel.PERHATIAN, "CA pengguna dipercaya untuk ${it.domains.joinToString()}", "Domain ini menerima sertifikat dari CA yang dipasang pengguna."))
+    }
+    nsc.domains.filter { it.cleartextPermitted == true }.takeIf { it.isNotEmpty() }?.let { scopes ->
+        add(SecurityNote(NoteLevel.INFO, "Cleartext untuk domain tertentu", "HTTP tanpa enkripsi diizinkan untuk: ${scopes.flatMap { it.domains }.joinToString()}."))
+    }
+    nsc.domains.filter { it.pins > 0 }.forEach { scope ->
+        val expired = scope.pinExpiration?.let { runCatching { java.time.LocalDate.parse(it).toEpochDay() * 86_400_000L < now }.getOrNull() } == true
+        add(if (expired) SecurityNote(NoteLevel.INFO, "Pin sertifikat kedaluwarsa", "Pin untuk ${scope.domains.joinToString()} berakhir ${scope.pinExpiration}; setelah tanggal itu Android tidak lagi menegakkan pinning.")
+            else SecurityNote(NoteLevel.BAIK, "Certificate pinning", "${scope.pins} pin untuk ${scope.domains.joinToString()}" +
+                (scope.pinExpiration?.let { ", berlaku sampai $it" } ?: "") + ". Koneksi hanya diterima bila rantai sertifikat memuat kunci yang dipin."))
+    }
+    nsc.domains.flatMap { it.trustAnchors.orEmpty() }.filter { it != "system" && it != "user" }.distinct().takeIf { it.isNotEmpty() }?.let {
+        add(SecurityNote(NoteLevel.INFO, "CA khusus", "Sebagian domain mempercayai sertifikat yang dibundel aplikasi: ${it.joinToString()}."))
+    }
+    listOfNotNull(nsc.base?.takeIf { it.certificateTransparency == false }?.let { "konfigurasi dasar" }) +
+        nsc.domains.filter { it.certificateTransparency == false }.map { it.domains.joinToString() }
+    .takeIf { it.isNotEmpty() }?.let { scopes ->
+        add(SecurityNote(NoteLevel.INFO, "Certificate Transparency dinonaktifkan", "Pemeriksaan bahwa sertifikat server tercatat di log publik CT dimatikan untuk: ${scopes.joinToString("; ")}."))
+    }
+    if (nsc.debugOverrides != null) add(SecurityNote(NoteLevel.INFO, "debug-overrides", "Aturan tambahan yang hanya berlaku bila aplikasi debuggable" +
+        (nsc.debugOverrides.trustAnchors?.let { " (sumber CA: ${it.joinToString()})" } ?: "") + "."))
+}
+
+/** All audit notes for a report; use this rather than [securityNotes] so no input is forgotten. */
+fun AnatomyReport.notes(now: Long): List<SecurityNote> = securityNotes(security, signing, now, networkSecurity)

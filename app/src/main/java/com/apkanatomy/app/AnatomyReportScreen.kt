@@ -56,7 +56,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport) {
             5 -> CodeExplorer(report.code)
             6 -> ManifestScreen(report)
             7 -> DnaScreen(report)
-            8 -> SkinScreen(report.structure)
+            8 -> SkinScreen(report)
         }
     }
 }
@@ -70,7 +70,7 @@ private fun Overview(report: AnatomyReport, open: (Int) -> Unit) {
             "\n${report.sdks.size} SDK/library dikenali" + (report.sdks.takeIf { it.isNotEmpty() }?.joinToString(prefix = ": ") { it.name }?.take(160) ?: "."), onClick = { open(1) }) }
         item { LessonCard("Kerangka", "${report.components.size} komponen · ${report.permissions.size} izin yang diminta · ${report.components.openToAllApps().size} exported tanpa izin · ${report.components.sumOf { c -> c.intentFilters.count { it.isDeepLink } }} deep link · ${report.permissions.count { sensitivePermissionLesson(it.name) != null }} izin sensitif. Pelajari titik masuk layar, kerja tanpa layar, broadcast, dan akses data.", onClick = { open(2) }) }
         item {
-            val attention = remember(report) { securityNotes(report.security, report.signing, System.currentTimeMillis()).count { it.level == NoteLevel.PERHATIAN } }
+            val attention = remember(report) { report.notes(System.currentTimeMillis()).count { it.level == NoteLevel.PERHATIAN } }
             LessonCard("DNA & keamanan", "Skema tanda tangan: ${report.signing.schemes.joinToString { it.label }.ifEmpty { "tidak ditemukan" }} · " +
                 "${report.signing.certificates.size} sertifikat · $attention catatan perlu perhatian. Pelajari siapa penandatangannya dan flag keamanan manifest.", onClick = { open(7) })
         }
@@ -225,12 +225,25 @@ private val schemeLessons = listOf(
 @Composable
 private fun DnaScreen(report: AnatomyReport) {
     val signing = report.signing
-    val notes = remember(report) { securityNotes(report.security, signing, System.currentTimeMillis()) }
+    val notes = remember(report) { report.notes(System.currentTimeMillis()) }
     val date = remember { java.text.SimpleDateFormat("yyyy-MM-dd", Locale.ROOT) }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item { LessonCard("Pelajari DNA aplikasi", "Tanda tangan membuktikan APK berasal dari pemegang kunci yang sama dan isinya tidak diubah. Pembaruan aplikasi hanya diterima bila ditandatangani kunci yang sama atau penerusnya. Halaman ini membaca tanda tangan; verifikasi digest dilakukan Android saat instalasi.") }
         item { Text("Catatan audit", style = MaterialTheme.typography.titleMedium) }
         items(notes) { note -> NoteCard(note) }
+        item { Text("Network Security Config", style = MaterialTheme.typography.titleMedium) }
+        item {
+            val nsc = report.networkSecurity
+            LessonCard(nsc?.file ?: "Tidak ada", if (nsc == null) {
+                (report.resources?.note ?: "Aplikasi tidak memakai Network Security Config, sehingga berlaku aturan bawaan untuk target SDK ${report.targetSdk}: " +
+                    (if (report.targetSdk >= 24) "hanya CA sistem" else "CA sistem dan CA pengguna") + ".")
+            } else buildString {
+                append("Konfigurasi jaringan per domain: kapan HTTP diizinkan, CA mana yang dipercaya, dan kunci yang dipin. Nama file dapat dipendekkan R8, jadi dicari lewat resources.arsc.")
+                nsc.base?.let { append("\n\nbase-config: ").append(describeScope(it)) }
+                nsc.domains.forEach { append("\n\n").append(it.domains.joinToString()).append(": ").append(describeScope(it)) }
+                nsc.debugOverrides?.let { append("\n\ndebug-overrides: ").append(describeScope(it)) }
+            })
+        }
         item { Text("Skema tanda tangan", style = MaterialTheme.typography.titleMedium) }
         items(schemeLessons) { (scheme, lesson) ->
             val status = when {
@@ -261,7 +274,8 @@ private fun DnaScreen(report: AnatomyReport) {
 }
 
 @Composable
-private fun SkinScreen(s: PackageStructure) {
+private fun SkinScreen(report: AnatomyReport) {
+    val s = report.structure
     val slices = remember(s) { sizeBreakdown(s.entries) }
     val groups = remember(s) { notableFiles(s.entries) }
     val total = slices.sumOf { it.size }.coerceAtLeast(1)
@@ -270,6 +284,15 @@ private fun SkinScreen(s: PackageStructure) {
         item { Text("Proporsi ukuran (${formatSize(total)} sebelum kompresi)", style = MaterialTheme.typography.titleMedium) }
         if (slices.isEmpty()) item { Text("Tidak ada entri dengan ukuran yang diketahui.") }
         items(slices, key = { it.category.name }) { slice -> SizeBar(slice, total) }
+        report.resources?.let { res ->
+            item(key = "resources") {
+                LessonCard("Resource & bahasa", if (res.count == 0) res.note.orEmpty() else
+                    "${res.count} resource terdaftar di resources.arsc.\n" +
+                    res.typeCounts.entries.take(12).joinToString(" · ") { "${it.key} ${it.value}" } +
+                    "\n\n${res.locales.size} bahasa/wilayah" + (if (res.locales.isNotEmpty()) ": " + res.locales.joinToString() else "") +
+                    ". Terjemahan menunjukkan pasar yang dituju; sebagian bisa berasal dari library.")
+            }
+        }
         groups.forEach { group ->
             item(key = "group:${group.title}") {
                 LessonCard("${group.title} (${group.files.size})", group.explanation + "\n\n" +

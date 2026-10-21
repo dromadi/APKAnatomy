@@ -12,6 +12,8 @@ data class XmlAttribute(
     val value: String,
     /** Android resource id of the attribute (e.g. `0x01010003` for `android:name`), if known. */
     val resourceId: Int?,
+    /** The referenced resource when the value is a reference (`@...`). */
+    val referenceId: Int? = null,
 )
 
 data class XmlElement(

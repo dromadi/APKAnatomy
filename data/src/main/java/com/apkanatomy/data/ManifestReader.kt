@@ -2,6 +2,7 @@ package com.apkanatomy.data
 
 import com.apkanatomy.axml.AxmlDecoder
 import com.apkanatomy.axml.AxmlException
+import com.apkanatomy.axml.ResourceTable
 import com.apkanatomy.axml.XmlElement
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -17,7 +18,8 @@ internal data class DecodedManifest(val root: XmlElement?, val xml: String?, val
 internal object ManifestReader {
     private const val MAX_MANIFEST_BYTES = 8L * 1024 * 1024
 
-    fun read(apk: File): DecodedManifest = try {
+    /** @param resources resolves resource IDs in the XML to names when available. */
+    fun read(apk: File, resources: ResourceTable? = null): DecodedManifest = try {
         ZipFile(apk).use { zip ->
             val entry = zip.getEntry("AndroidManifest.xml") ?: return failed("AndroidManifest.xml tidak ditemukan di ${apk.name}.")
             if (entry.size !in 1..MAX_MANIFEST_BYTES) return failed("Ukuran manifest di luar batas 8 MiB.")
@@ -26,7 +28,7 @@ internal object ManifestReader {
                 try { zip.getInputStream(entry).use { copyBounded(it, out, MAX_MANIFEST_BYTES) } }
                 catch (_: IllegalArgumentException) { return failed("Ukuran manifest di luar batas 8 MiB.") }
             }.toByteArray()
-            val root = AxmlDecoder.decode(bytes)
+            val root = AxmlDecoder.decode(bytes, resources)
             DecodedManifest(root, root.toXmlString(), null)
         }
     } catch (e: AxmlException) {

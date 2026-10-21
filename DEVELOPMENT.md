@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.8
+# APKAnatomy 0.1.0-alpha.9
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -19,7 +19,7 @@ CI uploads the debug APK and verification reports on pushes and pull requests.
 
 Component and permission lists come from Android PackageManager; the raw manifest view uses the independent AXML decoder (alpha.4), and since alpha.6 intent-filters are linked to their components. Some malformed/unsupported APKs may be rejected by the platform. Split archives (.apks/.xapk) are not supported. Imported files are not retained across process death. Installed-package visibility applies only to the current profile; Play distribution requires reviewing QUERY_ALL_PACKAGES eligibility.
 
-Signature digest verification (Android does it at install) and resolving resource IDs through resources.arsc remain follow-up milestones. An exported component does not by itself establish a vulnerability. Protection categories describe requested permissions, not runtime grants.
+Signature digest verification (Android does it at install) remains out of scope. An exported component does not by itself establish a vulnerability. Protection categories describe requested permissions, not runtime grants.
 
 ## Device smoke test
 
@@ -112,3 +112,13 @@ The Kulit tab breaks the uncompressed size of all readable archives into DEX, na
 App icons appear in the installed-app list (loaded off the main thread, LRU cached) and in the report header. For reports the icon is rendered to a 144 px PNG during analysis, because an imported APK is deleted when analysis ends.
 
 Smoke test: export Markdown and JSON for one installed app and one imported APK and open both files; share the summary to a notes app; compare the Kulit bars with the Isi APK sizes for a Flutter or game app.
+
+## Alpha.9: resources.arsc and Network Security Config
+
+`core/axml` now also decodes resources.arsc (`ResourceTable`): global and per-package string pools, type chunks with 32-bit, 16-bit (FLAG_OFFSET16) and sparse (FLAG_SPARSE) entry offsets, standard, complex (bag) and compact entries, and the common configuration qualifiers (language, region, night, density, SDK). Every offset is bounds-checked; a file shorter than its header declares is rejected. The table is capped at 32 MiB. String pool and Res_value formatting are shared with the binary XML decoder.
+
+Decoded XML now shows names instead of IDs (`@string/app_name`, `@style/Theme.FDroid`); attributes keep the referenced ID. The Network Security Config file is located through the table, because R8's resource shrinker can rename it (the F-Droid client ships it as `res/8G.xml`), then parsed into base-config, nested domain-config, debug-overrides, trust anchors, pin sets and certificateTransparency. With a config present, android:usesCleartextTraffic is ignored and the base-config (default: target SDK < 28) decides cleartext; trusting user CAs, per-domain cleartext, pins (and expired pins), bundled CAs, disabled Certificate Transparency and debug-overrides get notes. Without a config, target SDK < 24 is noted as trusting user CAs. Kulit lists resource counts per type and the languages the table covers.
+
+Fixtures (`core/axml/src/test/resources/arsc`, README there) are aapt2 output in dense and offset16/compact form, plus a sparse table produced by `make_sparse.py` because aapt2 36 would not emit one for this input; `aapt2 dump resources` prints identical output for the dense and sparse APKs. On the F-Droid client: 4,836 resources and 45 locales in 132 ms, and the decoded `res/8G.xml` matches `aapt2 dump xmltree`.
+
+Smoke test: open Manifest for a Play Store app and check resolved names; open DNA for an app with pinning or a custom CA; check Resource & bahasa in Kulit.

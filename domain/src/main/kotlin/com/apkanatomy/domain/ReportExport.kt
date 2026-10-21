@@ -22,7 +22,13 @@ fun AnatomyReport.toMarkdown(now: Long): String = buildString {
     appendLine()
     signing.certificates.forEach { appendLine("- Sertifikat `${md(it.subject)}` · SHA-256 `${it.sha256}` · berlaku ${date(it.notBefore)} s.d. ${date(it.notAfter)} · ${it.foundIn.joinToString()}") }
     appendLine()
-    securityNotes(security, signing, now).forEach { appendLine("- **${it.level.name}** ${md(it.title)}: ${md(it.explanation)}") }
+    notes(now).forEach { appendLine("- **${it.level.name}** ${md(it.title)}: ${md(it.explanation)}") }
+    networkSecurity?.let { nsc ->
+        appendLine()
+        appendLine("Network Security Config `${nsc.file}`:")
+        listOfNotNull(nsc.base?.let { "base-config" to it }, nsc.debugOverrides?.let { "debug-overrides" to it }).plus(nsc.domains.map { it.domains.joinToString() to it })
+            .forEach { (name, scope) -> appendLine("- $name: ${describeScope(scope)}") }
+    }
     appendLine()
     appendLine("## Kerangka")
     val open = components.openToAllApps().toSet()
@@ -92,7 +98,10 @@ fun AnatomyReport.toJson(now: Long): String = json(mapOf(
         "otherBlocks" to signing.otherBlocks, "warnings" to signing.warnings),
     "security" to security?.let { mapOf("debuggable" to it.debuggable, "allowBackup" to it.allowBackup, "cleartextTraffic" to it.cleartextTraffic,
         "testOnly" to it.testOnly, "networkSecurityConfig" to it.networkSecurityConfig) },
-    "notes" to securityNotes(security, signing, now).map { mapOf("level" to it.level.name, "title" to it.title, "explanation" to it.explanation) },
+    "networkSecurity" to networkSecurity?.let { nsc -> mapOf("file" to nsc.file, "base" to nsc.base?.let(::scopeJson),
+        "domains" to nsc.domains.map(::scopeJson), "debugOverrides" to nsc.debugOverrides?.let(::scopeJson)) },
+    "resources" to resources?.let { mapOf("count" to it.count, "types" to it.typeCounts, "locales" to it.locales) },
+    "notes" to notes(now).map { mapOf("level" to it.level.name, "title" to it.title, "explanation" to it.explanation) },
     "components" to components.map { c -> mapOf("name" to c.name, "kind" to c.kind.name, "exported" to c.exported, "enabled" to c.enabled,
         "permission" to c.permission, "writePermission" to c.writePermission, "authority" to c.authority,
         "intentFilters" to c.intentFilters.map { f -> mapOf("actions" to f.actions, "categories" to f.categories, "schemes" to f.schemes,
@@ -104,3 +113,15 @@ fun AnatomyReport.toJson(now: Long): String = json(mapOf(
     "sizes" to sizeBreakdown(structure.entries).map { mapOf("category" to it.category.name, "files" to it.files, "size" to it.size, "compressedSize" to it.compressedSize) },
     "warnings" to (structure.warnings + signing.warnings + code.warnings + listOfNotNull(manifestNote)).distinct(),
 ))
+
+/** One-line description of a Network Security Config scope. */
+fun describeScope(scope: NscScope): String = listOfNotNull(
+    scope.cleartextPermitted?.let { if (it) "cleartext diizinkan" else "cleartext dilarang" },
+    scope.trustAnchors?.let { "CA: ${it.joinToString()}" },
+    if (scope.pins > 0) "${scope.pins} pin" + (scope.pinExpiration?.let { " s.d. $it" } ?: "") else null,
+    scope.certificateTransparency?.let { if (it) "CT aktif" else "CT nonaktif" },
+).joinToString(" · ").ifEmpty { "mewarisi aturan di atasnya" }
+
+private fun scopeJson(scope: NscScope) = mapOf("domains" to scope.domains, "cleartextPermitted" to scope.cleartextPermitted,
+    "trustAnchors" to scope.trustAnchors, "pins" to scope.pins, "pinExpiration" to scope.pinExpiration,
+    "certificateTransparency" to scope.certificateTransparency)

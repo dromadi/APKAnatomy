@@ -32,7 +32,7 @@ class AnatomyRepository(private val context: Context) {
         val context = coroutineContext
         val files = paths.map(::File)
         report(info, "Aplikasi terinstal", StructureScanner().scan(files), DexCodeScanner().scan(files, info.packageName) { context.ensureActive() },
-            ManifestReader.read(File(app.sourceDir)), SigningScanner().scan(File(app.sourceDir), File(app.sourceDir + ".idsig")))
+            File(app.sourceDir), SigningScanner().scan(File(app.sourceDir), File(app.sourceDir + ".idsig")))
     }
 
     suspend fun analyzeFile(uri: Uri): AnatomyReport = withContext(Dispatchers.IO) {
@@ -54,12 +54,15 @@ class AnatomyRepository(private val context: Context) {
             }
             val context = coroutineContext
             report(info, "File APK lokal", StructureScanner().scan(listOf(file)), DexCodeScanner().scan(listOf(file), info.packageName) { context.ensureActive() },
-                ManifestReader.read(file), SigningScanner().scan(file, v4Signature = null))
+                file, SigningScanner().scan(file, v4Signature = null))
         } finally { file.delete() }
     }
 
     private fun report(info: PackageInfo, source: String, structure: PackageStructure, code: CodeIndex,
-        manifest: DecodedManifest, signing: SigningReport): AnatomyReport {
+        baseApk: File, signing: SigningReport): AnatomyReport {
+        val (table, tableNote) = ResourceReader.read(baseApk)
+        val manifest = ManifestReader.read(baseApk, table)
+        val (networkSecurity, nscNote) = ResourceReader.networkSecurityConfig(baseApk, manifest.application, table)
         val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
         val components = buildList {
             info.activities.orEmpty().forEach { add(component(it, ComponentKind.ACTIVITY, it.permission, app.enabled)) }
@@ -85,7 +88,9 @@ class AnatomyRepository(private val context: Context) {
                 AppPermission(name, protection)
             }, structure, code, manifestXml = manifest.xml, manifestNote = manifest.note,
             signing = signing, security = securityFlags(app, manifest), sdks = detectSdks(code.packages, structure.libraryVersions),
-            iconPng = iconPng(app))
+            iconPng = iconPng(app), networkSecurity = networkSecurity,
+            resources = (table?.let { ResourceSummary(it.resourceCount, it.typeCounts().entries.sortedByDescending { e -> e.value }.associate { e -> e.key to e.value }, it.locales().toList(), nscNote) }
+                ?: tableNote?.let { ResourceSummary(0, emptyMap(), emptyList(), listOfNotNull(it, nscNote).joinToString(" ")) }))
     }
 
     private fun iconPng(app: ApplicationInfo): ByteArray? = try {

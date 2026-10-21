@@ -39,7 +39,10 @@ data class AnatomyReport(
     val sdks: List<DetectedSdk> = emptyList(),
     /** App icon rendered to PNG during analysis (an imported APK is deleted afterwards). */
     val iconPng: ByteArray? = null,
+    val networkSecurity: NetworkSecurityConfig? = null,
+    val resources: ResourceSummary? = null,
 )
+data class ResourceSummary(val count: Int, val typeCounts: Map<String, Int>, val locales: List<String>, val note: String? = null)
 /**
  * Enabled exported components that any app can reach without holding a permission.
  * Providers count when either read or write access is unguarded. Expected for a launcher

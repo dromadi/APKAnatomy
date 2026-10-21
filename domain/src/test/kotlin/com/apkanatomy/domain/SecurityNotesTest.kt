@@ -26,6 +26,30 @@ class SecurityNotesTest {
         val notes = titles(null, signing).map { it.second }
         assertEquals(listOf("Tanda tangan modern", "Rotasi kunci", "Sertifikat debug Android", "Sertifikat kedaluwarsa", "Algoritma sertifikat lama"), notes)
     }
+    @Test fun networkSecurityConfigOverridesTheManifestFlag() {
+        val nsc = NetworkSecurityConfig("res/xml/nsc.xml",
+            base = NscScope(cleartextPermitted = false, trustAnchors = listOf("system", "user")),
+            domains = listOf(
+                NscScope(listOf("*.legacy.example.com"), cleartextPermitted = true),
+                NscScope(listOf("api.example.com"), trustAnchors = listOf("@raw/company_ca"), pins = 2, pinExpiration = "2030-01-01"),
+                NscScope(listOf("old.example.com"), pins = 1, pinExpiration = "2020-01-01", certificateTransparency = false)),
+            debugOverrides = NscScope(trustAnchors = listOf("user")))
+        val notes = securityNotes(flags.copy(cleartextTraffic = true), SigningReport(setOf(SignatureScheme.V2)), now, nsc).map { it.level to it.title }
+        assertTrue(NoteLevel.BAIK to "Cleartext tidak diizinkan" in notes)
+        assertTrue(NoteLevel.PERHATIAN to "CA pengguna dipercaya" in notes)
+        assertTrue(NoteLevel.INFO to "Cleartext untuk domain tertentu" in notes)
+        assertTrue(NoteLevel.BAIK to "Certificate pinning" in notes)
+        assertTrue(NoteLevel.INFO to "Pin sertifikat kedaluwarsa" in notes)
+        assertTrue(NoteLevel.INFO to "CA khusus" in notes)
+        assertTrue(NoteLevel.INFO to "debug-overrides" in notes)
+        assertTrue(NoteLevel.INFO to "Certificate Transparency dinonaktifkan" in notes)
+        // No base-config: defaults follow the target SDK.
+        val legacy = securityNotes(flags.copy(targetSdk = 23), SigningReport(setOf(SignatureScheme.V2)), now, NetworkSecurityConfig("x")).map { it.title }
+        assertTrue("Lalu lintas HTTP diizinkan" in legacy && "CA pengguna dipercaya" in legacy)
+    }
+    @Test fun oldTargetWithoutConfigTrustsUserCas() {
+        assertTrue(securityNotes(flags.copy(targetSdk = 23), SigningReport(setOf(SignatureScheme.V2)), now).any { it.title == "CA pengguna dipercaya (target SDK 23)" })
+    }
     @Test fun manifestFlagsAreExplained() {
         val risky = titles(flags.copy(debuggable = true, allowBackup = true, cleartextTraffic = true, testOnly = true), SigningReport(setOf(SignatureScheme.V3)))
         assertEquals(listOf(NoteLevel.BAIK, NoteLevel.PERHATIAN, NoteLevel.INFO, NoteLevel.PERHATIAN, NoteLevel.INFO), risky.map { it.first })
