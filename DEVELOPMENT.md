@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.7
+# APKAnatomy 0.1.0-alpha.8
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -19,7 +19,7 @@ CI uploads the debug APK and verification reports on pushes and pull requests.
 
 Component and permission lists come from Android PackageManager; the raw manifest view uses the independent AXML decoder (alpha.4), and since alpha.6 intent-filters are linked to their components. Some malformed/unsupported APKs may be rejected by the platform. Split archives (.apks/.xapk) are not supported. Imported files are not retained across process death. Installed-package visibility applies only to the current profile; Play distribution requires reviewing QUERY_ALL_PACKAGES eligibility.
 
-Signature digest verification (Android does it at install), app icons, size charts, and report exports remain follow-up milestones. An exported component does not by itself establish a vulnerability. Protection categories describe requested permissions, not runtime grants.
+Signature digest verification (Android does it at install) and resolving resource IDs through resources.arsc remain follow-up milestones. An exported component does not by itself establish a vulnerability. Protection categories describe requested permissions, not runtime grants.
 
 ## Device smoke test
 
@@ -102,3 +102,13 @@ About 60 rules in `domain/Sdk.kt` match whole package segments (`okhttp3` matche
 `META-INF/<group>_<artifact>.version` files (up to 2,000 per APK, 128 bytes each, inflated size capped) give exact versions for many Google and AndroidX libraries; they are listed in full and attached to matching SDKs. A share of one- or two-letter class names (at least 50 classes) gives an obfuscation hint.
 
 Smoke test: open Teknologi for an app with ads or Firebase and check categories, versions and evidence; open an obfuscated release app and check the hint.
+
+## Alpha.8: skin, report export and icons
+
+The Kulit tab breaks the uncompressed size of all readable archives into DEX, native libraries, res/, resources.arsc, assets, metadata and other files, largest first. Each category is one labelled bar with its share, size, stored (ZIP) size and file count printed next to it; the bars use a single theme color because the label, not the color, identifies the category. Notable files are grouped: fonts, on-device ML models, web bundles in assets, bundled databases, certificates/keystores outside META-INF (often certificate pinning), media and JSON configuration.
+
+"Ekspor" saves a Markdown or JSON report through the Storage Access Framework, or shares the Markdown summary (capped at 100,000 characters for the share intent; saved files are not capped). Both cover identity, signing and security notes, components with intent-filters, permissions, technologies, SDKs, library versions, size breakdown and partial-result warnings; code listings and the raw manifest are left out. The JSON writer escapes all control characters; a report generated from the F-Droid client parsed with Python's strict json module.
+
+App icons appear in the installed-app list (loaded off the main thread, LRU cached) and in the report header. For reports the icon is rendered to a 144 px PNG during analysis, because an imported APK is deleted when analysis ends.
+
+Smoke test: export Markdown and JSON for one installed app and one imported APK and open both files; share the summary to a notes app; compare the Kulit bars with the Isi APK sizes for a Flutter or game app.

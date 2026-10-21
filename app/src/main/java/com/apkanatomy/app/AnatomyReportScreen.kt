@@ -1,6 +1,10 @@
 package com.apkanatomy.app
 
 import android.content.ClipData
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
@@ -26,11 +30,19 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun AnatomyReportScreen(report: AnatomyReport) {
     var tab by rememberSaveable(report.packageName, report.source) { mutableIntStateOf(0) }
-    Text(report.label, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 12.dp))
-    Text(report.packageName, style = MaterialTheme.typography.bodySmall)
-    Text("v${report.version} · min SDK ${report.minSdk} · target ${report.targetSdk}")
+    Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        val icon = remember(report.iconPng) {
+            report.iconPng?.let { bytes -> android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+        }
+        icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(48.dp)) }
+        Column {
+            Text(report.label, style = MaterialTheme.typography.titleLarge)
+            Text(report.packageName, style = MaterialTheme.typography.bodySmall)
+            Text("v${report.version} · min SDK ${report.minSdk} · target ${report.targetSdk}")
+        }
+    }
     PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
-        listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Isi APK", "Kode", "Manifest", "DNA").forEachIndexed { index, label ->
+        listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Isi APK", "Kode", "Manifest", "DNA", "Kulit").forEachIndexed { index, label ->
             Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label) })
         }
     }
@@ -44,6 +56,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport) {
             5 -> CodeExplorer(report.code)
             6 -> ManifestScreen(report)
             7 -> DnaScreen(report)
+            8 -> SkinScreen(report.structure)
         }
     }
 }
@@ -62,6 +75,11 @@ private fun Overview(report: AnatomyReport, open: (Int) -> Unit) {
                 "${report.signing.certificates.size} sertifikat · $attention catatan perlu perhatian. Pelajari siapa penandatangannya dan flag keamanan manifest.", onClick = { open(7) })
         }
         item { LessonCard("Manifest", report.manifestXml?.let { "${it.lines().size} baris XML hasil dekode AndroidManifest.xml biner. Lihat deklarasi lengkap, termasuk intent-filter dan meta-data." } ?: (report.manifestNote ?: "Manifest tidak tersedia."), onClick = { open(6) }) }
+        item {
+            val largest = remember(s) { sizeBreakdown(s.entries).firstOrNull() }
+            LessonCard("Kulit & ukuran", (largest?.let { "Bagian terbesar: ${it.category.label} (${formatSize(it.size)}). " } ?: "") +
+                "Lihat proporsi ukuran, font, model ML, web bundle, dan file menarik lain.", onClick = { open(8) })
+        }
         item { LessonCard("Organ & isi paket", "${s.archives.size} arsip · ${s.entries.size} file · ${s.dex.size} DEX · ${s.libraries.size} library native. Ukuran isi terdaftar: ${formatSize(s.entries.filter { it.size >= 0 }.sumOf { it.size })} sebelum kompresi.", onClick = { open(4) }) }
         item { LessonCard("Telusuri kode", "${report.code.classes.size} class · ${report.code.methods.size} method terdefinisi · ${report.code.calls.size} pemanggilan langsung terbaca. Cari nama, buka instruksi, dan gunakan Find usage.", onClick = { open(5) }) }
         item { LessonCard("Panduan penelusuran", "Mulai dari nama komponen atau library yang dikenali. Catat file buktinya, kemudian gunakan tab Kode untuk menelusuri method dan pemanggilan langsung. Nama file saja belum menjelaskan fungsi atau hubungan antarbagian.") }
@@ -243,6 +261,44 @@ private fun DnaScreen(report: AnatomyReport) {
 }
 
 @Composable
+private fun SkinScreen(s: PackageStructure) {
+    val slices = remember(s) { sizeBreakdown(s.entries) }
+    val groups = remember(s) { notableFiles(s.entries) }
+    val total = slices.sumOf { it.size }.coerceAtLeast(1)
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+        item { LessonCard("Pelajari kulit aplikasi", "Proporsi ukuran menunjukkan ke mana \"berat\" APK pergi: kode, library native, resource, atau aset. Ukuran dihitung sebelum kompresi dari semua arsip yang terbaca; kolom ZIP menunjukkan ukuran tersimpan.") }
+        item { Text("Proporsi ukuran (${formatSize(total)} sebelum kompresi)", style = MaterialTheme.typography.titleMedium) }
+        if (slices.isEmpty()) item { Text("Tidak ada entri dengan ukuran yang diketahui.") }
+        items(slices, key = { it.category.name }) { slice -> SizeBar(slice, total) }
+        groups.forEach { group ->
+            item(key = "group:${group.title}") {
+                LessonCard("${group.title} (${group.files.size})", group.explanation + "\n\n" +
+                    group.files.take(20).joinToString("\n") { "${it.path} · ${formatSize(it.size)}" } +
+                    (if (group.files.size > 20) "\n… dan ${group.files.size - 20} lainnya" else ""))
+            }
+        }
+        items(s.warnings) { LessonCard("Hasil sebagian", it) }
+    }
+}
+
+/** One labelled bar of a part-to-whole breakdown; the value is printed, so color carries no meaning. */
+@Composable
+private fun SizeBar(slice: SizeSlice, total: Long) {
+    val share = slice.size.toFloat() / total
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(slice.category.label, style = MaterialTheme.typography.bodyMedium)
+            Text(String.format(Locale.ROOT, "%.1f%% · %s", share * 100, formatSize(slice.size)), style = MaterialTheme.typography.bodyMedium)
+        }
+        Box(Modifier.fillMaxWidth().height(8.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))) {
+            Box(Modifier.fillMaxWidth(share.coerceIn(0.01f, 1f)).fillMaxHeight().background(MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp)))
+        }
+        Text("${slice.files} file · di ZIP ${formatSize(slice.compressedSize)} · ${slice.category.lesson}",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
 private fun NoteCard(note: SecurityNote) {
     val colors = MaterialTheme.colorScheme
     val (container, label) = when (note.level) {
@@ -315,7 +371,7 @@ private fun LessonCard(title: String, body: String, onClick: (() -> Unit)? = nul
     }
 }
 
-private fun formatSize(size: Long): String = when {
+internal fun formatSize(size: Long): String = when {
     size < 0 -> "tidak diketahui"
     size < 1024 -> "$size B"
     size < 1024 * 1024 -> String.format(Locale.ROOT, "%.1f KiB", size / 1024.0)

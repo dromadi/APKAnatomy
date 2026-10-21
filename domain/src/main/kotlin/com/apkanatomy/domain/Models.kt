@@ -37,6 +37,8 @@ data class AnatomyReport(
     /** Null when the package manager did not expose application flags. */
     val security: SecurityFlags? = null,
     val sdks: List<DetectedSdk> = emptyList(),
+    /** App icon rendered to PNG during analysis (an imported APK is deleted afterwards). */
+    val iconPng: ByteArray? = null,
 )
 /**
  * Enabled exported components that any app can reach without holding a permission.

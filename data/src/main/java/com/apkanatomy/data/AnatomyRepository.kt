@@ -84,8 +84,16 @@ class AnatomyRepository(private val context: Context) {
                 } catch (_: PackageManager.NameNotFoundException) { "Tidak dikenal di perangkat ini" }
                 AppPermission(name, protection)
             }, structure, code, manifestXml = manifest.xml, manifestNote = manifest.note,
-            signing = signing, security = securityFlags(app, manifest), sdks = detectSdks(code.packages, structure.libraryVersions))
+            signing = signing, security = securityFlags(app, manifest), sdks = detectSdks(code.packages, structure.libraryVersions),
+            iconPng = iconPng(app))
     }
+
+    private fun iconPng(app: ApplicationInfo): ByteArray? = try {
+        val size = 144
+        val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+        app.loadIcon(pm).apply { setBounds(0, 0, size, size) }.draw(android.graphics.Canvas(bitmap))
+        java.io.ByteArrayOutputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it); it.toByteArray() }
+    } catch (_: Exception) { null }
 
     private fun securityFlags(app: ApplicationInfo, manifest: DecodedManifest) = SecurityFlags(
         debuggable = app.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
