@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import com.apkanatomy.data.HistoryStore
 import com.apkanatomy.domain.FilePreview
@@ -64,6 +65,15 @@ class HistoryScreenTest {
         compose.onAllNodesWithText("Jadikan pembanding")[1].performClick()
         assertEquals(store.list().map { it.id }, opened + compared)
         compose.shot("history_list")
+    }
+
+    @Test fun glossarySearches() {
+        screen { GlossaryScreen() }
+        compose.onNodeWithText("Paket & build").assertExists()
+        compose.onNode(androidx.compose.ui.test.hasSetTextAction()).performTextInput("strandhogg")
+        compose.onNodeWithText("Task affinity / StrandHogg").assertExists()
+        compose.onNodeWithText("Lihat di tab Kemampuan").assertExists()
+        compose.shot("glossary_search")
     }
 
     @Test fun progressShowsTheStepAndCancels() {

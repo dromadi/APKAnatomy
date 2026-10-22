@@ -72,13 +72,18 @@ private fun AnatomyApp(model: AnatomyViewModel) {
             state.info?.let { Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 8.dp)) }
             val report = state.report
             if (report == null) {
-                var showHistory by rememberSaveable { mutableStateOf(false) }
+                // 0 = installed apps, 1 = history, 2 = glossary
+                var section by rememberSaveable { mutableIntStateOf(0) }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                    FilterChip(selected = !showHistory, onClick = { showHistory = false }, label = { Text("Aplikasi terinstal") })
-                    FilterChip(selected = showHistory, onClick = { showHistory = true }, label = { Text("Riwayat (${state.history.size})") })
+                    listOf("Terinstal", "Riwayat (${state.history.size})", "Kamus").forEachIndexed { i, label ->
+                        FilterChip(selected = section == i, onClick = { section = i }, label = { Text(label) })
+                    }
                 }
-                if (showHistory) HistoryList(state.history, state.busy, model::openHistory, model::baselineFromHistory, model::deleteHistory, model::clearHistory)
-                else AppList(state.apps, state.busy, model::inspect)
+                when (section) {
+                    1 -> HistoryList(state.history, state.busy, model::openHistory, model::baselineFromHistory, model::deleteHistory, model::clearHistory)
+                    2 -> GlossaryScreen()
+                    else -> AppList(state.apps, state.busy, model::inspect)
+                }
             }
             else AnatomyReportScreen(report, model::preview, state.baseline.takeUnless { state.reportIsBaseline }, model::clearBaseline)
         }
@@ -122,6 +127,31 @@ internal fun HistoryList(history: List<HistoryEntry>, busy: Boolean, open: (Stri
             }
         }
         if (history.isNotEmpty()) item { TextButton(onClick = clear, enabled = !busy) { Text("Hapus semua riwayat") } }
+    }
+}
+
+@Composable
+internal fun GlossaryScreen() {
+    var query by rememberSaveable { mutableStateOf("") }
+    val terms = remember(query) { GLOSSARY.search(query) }
+    OutlinedTextField(query, { query = it }, label = { Text("Cari istilah") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+        item { Text("${GLOSSARY.size} istilah untuk membaca laporan APKAnatomy, dikelompokkan dari paket sampai privasi.", style = MaterialTheme.typography.bodySmall) }
+        if (terms.isEmpty()) item { Text("Tidak ada istilah yang cocok.") }
+        // While searching, results keep their relevance order; otherwise terms are grouped.
+        val groups = if (query.isBlank()) terms.groupBy { it.group } else mapOf("Hasil" to terms)
+        groups.forEach { (group, list) ->
+            item(key = "g:$group") { Text(group, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
+            items(list, key = { "t:${it.term}" }) { term ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(term.term, style = MaterialTheme.typography.titleSmall)
+                        Text(term.explanation, style = MaterialTheme.typography.bodySmall)
+                        term.tab?.let { Text("Lihat di tab $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary) }
+                    }
+                }
+            }
+        }
     }
 }
 
