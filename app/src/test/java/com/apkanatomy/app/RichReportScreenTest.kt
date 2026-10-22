@@ -38,7 +38,7 @@ class RichReportScreenTest {
     @Test fun everyTabRenders() {
         show()
         compose.shot("rich_overview")
-        for ((tab, marker) in listOf("Cari" to "Cari apa saja", "Privasi" to "Pelacak (1)", "Perilaku" to "Pelajari perilaku", "Teknologi" to "Google AdMob", "Komponen" to "Pelajari komponen", "Izin" to "SYSTEM_ALERT_WINDOW", "Kemampuan" to "TrackingService",
+        for ((tab, marker) in listOf("Belajar" to "Siapa pembuatnya?", "Cari" to "Cari apa saja", "Privasi" to "Pelacak (1)", "Perilaku" to "Pelajari perilaku", "Teknologi" to "Google AdMob", "Komponen" to "Pelajari komponen", "Izin" to "SYSTEM_ALERT_WINDOW", "Kemampuan" to "TrackingService",
             "Isi APK" to "classes.dex", "Kode" to "Mulai menelusuri", "Manifest" to "android:label", "DNA" to "Catatan audit", "Kulit" to "Kode DEX", "Jejak" to "Midtrans server key")) {
             compose.openTab(tab)
             compose.onNodeWithText(marker, substring = true, useUnmergedTree = true).assertExists()
@@ -154,6 +154,19 @@ class RichReportScreenTest {
         compose.onNodeWithText("Izin ↔ kode").assertExists()
         compose.onNodeWithText("Info · CAMERA: pemakaian tidak terlihat").assertExists()
         compose.shot("rich_permission_use")
+    }
+
+    @Test fun tourWalksThroughTheReport() {
+        show()
+        compose.openTab("Belajar")
+        compose.onNodeWithText("Langkah 1 dari 8 · 0 selesai").assertExists()
+        compose.onNodeWithText("Pikirkan dulu, lalu lihat jawaban").performClick()
+        compose.onNodeWithText("Langkah 1 dari 8 · 1 selesai").assertExists()
+        compose.shot("rich_tour")
+        compose.onNodeWithText("Berikutnya").performClick()
+        compose.onNodeWithText("Pintu masuk aplikasi").assertExists()
+        compose.onNodeWithText("Lihat di tab Komponen →").performClick()
+        compose.onNodeWithText("Pelajari komponen").assertExists()
     }
 
     @Test fun codeTabSearchesStringLiterals() {

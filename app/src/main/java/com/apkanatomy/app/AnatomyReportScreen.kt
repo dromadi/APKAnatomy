@@ -36,7 +36,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
     baseline: AnatomyReport? = null, clearBaseline: () -> Unit = {},
     loadResources: suspend () -> ResourceListing = { ResourceListing(emptyList(), "Penjelajah resource tidak tersedia di sini.") }) {
     var selectedTab by rememberSaveable(report.packageName, report.source) { mutableIntStateOf(0) }
-    val tabs = listOf("Ringkasan", "Cari", "Privasi", "Perilaku", "Teknologi", "Komponen", "Izin", "Kemampuan", "Isi APK", "Kode", "Manifest", "DNA", "Kulit", "Jejak") + listOfNotNull(baseline?.let { "Banding" })
+    val tabs = listOf("Ringkasan", "Belajar", "Cari", "Privasi", "Perilaku", "Teknologi", "Komponen", "Izin", "Kemampuan", "Isi APK", "Kode", "Manifest", "DNA", "Kulit", "Jejak") + listOfNotNull(baseline?.let { "Banding" })
     // The Banding tab disappears when the baseline is cleared.
     val tab = selectedTab.coerceAtMost(tabs.lastIndex)
     // A method to open in the Kode tab, set when another tab links to code.
@@ -64,6 +64,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
     key(report.packageName, report.source) {
         when (tabs[tab]) {
             "Ringkasan" -> Overview(report, baseline) { name -> selectedTab = tabs.indexOf(name).coerceAtLeast(0) }
+            "Belajar" -> TourScreen(report) { name -> selectedTab = tabs.indexOf(name).coerceAtLeast(0) }
             "Cari" -> SearchScreen(report, { name -> selectedTab = tabs.indexOf(name).coerceAtLeast(0) }, openMethod, openClass)
             "Privasi" -> PrivacyScreen(report)
             "Teknologi" -> TechnologyScreen(report)
@@ -79,6 +80,38 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
             "Jejak" -> TracesScreen(report.traces, report.code.methods.mapTo(HashSet()) { it.id }, openMethod)
             "Banding" -> baseline?.let { CompareScreen(it, report, clearBaseline) }
         }
+    }
+}
+
+/** The guided tour: one step at a time, an observation from this report, a question, and the answer on request. */
+@Composable
+private fun TourScreen(report: AnatomyReport, openTab: (String) -> Unit) {
+    val steps = remember(report) { report.tour() }
+    var index by rememberSaveable(report.packageName, report.source) { mutableIntStateOf(0) }
+    var done by rememberSaveable(report.packageName, report.source) { mutableStateOf(emptyList<Int>()) }
+    var revealed by rememberSaveable(report.packageName, report.source, index) { mutableStateOf(false) }
+    val step = steps[index]
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Langkah ${index + 1} dari ${steps.size} · ${done.size} selesai", style = MaterialTheme.typography.labelLarge)
+        LinearProgressIndicator(progress = { done.size.toFloat() / steps.size }, modifier = Modifier.fillMaxWidth())
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(step.title, style = MaterialTheme.typography.titleLarge)
+                Text("Di aplikasi ini", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(step.observation, style = MaterialTheme.typography.bodyMedium)
+                OutlinedButton(onClick = { openTab(step.tab) }) { Text("Lihat di tab ${step.tab} →") }
+                HorizontalDivider()
+                Text("Pertanyaan", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(step.question, style = MaterialTheme.typography.bodyLarge)
+                if (revealed) Text(step.answer, style = MaterialTheme.typography.bodyMedium)
+                else TextButton(onClick = { revealed = true; if (index !in done) done = done + index }) { Text("Pikirkan dulu, lalu lihat jawaban") }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { index-- }, enabled = index > 0) { Text("Sebelumnya") }
+            Button(onClick = { index++ }, enabled = index < steps.lastIndex) { Text("Berikutnya") }
+        }
+        if (done.size == steps.size) LessonCard("Tur selesai", "Anda sudah membaca aplikasi ini dari tanda tangan sampai kodenya. Coba ulangi pada aplikasi lain dan bandingkan dengan tab Banding.")
     }
 }
 
@@ -127,7 +160,7 @@ private fun Overview(report: AnatomyReport, baseline: AnatomyReport?, open: (Str
                 else "$count perubahan dibanding ${baseline.label} ${baseline.version}" + (if (flagged > 0) ", $flagged perlu dicermati" else "") +
                     ": " + diff.joinToString { "${it.title} (${it.changes.size})" } + ".", onClick = { open("Banding") })
         }
-        item { LessonCard("Mulai membedah", "Kenali teknologinya, jelajahi komponen, lalu telusuri file yang menyusunnya. Hasil ini berasal dari analisis statis paket; alur eksekusi belum direkam.") }
+        item { LessonCard("Mulai membedah", "Baru belajar? Ikuti tur 8 langkah di tab Belajar: dari siapa pembuatnya sampai membaca kodenya. Hasil ini berasal dari analisis statis paket; alur eksekusi belum direkam.", onClick = { open("Belajar") }) }
         item {
             val privacy = remember(report) { report.privacyProfile() }
             LessonCard("Privasi", privacy.summary, onClick = { open("Privasi") })

@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.35
+# APKAnatomy 0.1.0-alpha.36
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -371,3 +371,17 @@ Teknologi and the overview now say how the screens are drawn (`uiStack()`, domai
 - **Android toolkits**: Jetpack Compose (class count in `androidx.compose.ui`), Views with layout XML (number of `res/layout*` files), and NativeActivity.
 
 The primary toolkit is the first engine found, because an engine draws the screens even when AndroidX is bundled. Without an engine it is Compose when there are at least 200 Compose UI classes and fewer than 40 layouts, otherwise Views. Library layouts and Compose classes from dependencies are why both are listed with their counts rather than decided silently.
+
+## Alpha.36: guided tour
+
+A **Belajar** tab, right after Ringkasan, walks a learner through the report in eight steps:
+1. who signed the app;
+2. its entry points;
+3. what it could learn about the user;
+4. what it is built from;
+5. what its code does;
+6. where it connects;
+7. how tidy its security is;
+8. how to read its code.
+
+Each step shows an observation written from this report's own findings (signer, launcher activity, privacy summary, UI toolkit, share of own code, top behaviour, hosts, notes needing attention, the launcher class to open), a button to the tab where it shows, and a question whose answer appears only on request. Progress ("n selesai") is kept per report while the screen lives. The overview's first card now points to the tour. `tour()` is domain code; a test checks every step names a real tab and asks a question.
