@@ -122,7 +122,8 @@ class AnatomyRepository(private val context: Context) {
         step(2)
         val traces = TraceCollector()
         val behaviors = BehaviorCollector(info.packageName)
-        val code = DexCodeScanner().scan(files, info.packageName, traces, behaviors) { context.ensureActive() }
+        val entryClasses = listOf(info.activities, info.services, info.receivers, info.providers).flatMap { it.orEmpty().map { c -> c.name } }
+        val code = DexCodeScanner().scan(files, info.packageName, traces, behaviors, entryClasses) { context.ensureActive() }
         step(3)
         val signing = signingOf()
         step(4)

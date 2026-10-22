@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.22
+# APKAnatomy 0.1.0-alpha.23
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -250,3 +250,13 @@ Each card in the Komponen tab now has a "Buka kode …" button when the componen
 ## Alpha.22: Kamus (glossary)
 
 The home screen has a third section, **Kamus**: 48 terms a learner meets in the report, from APK, DEX and split APKs to StrandHogg, certificate pinning, 16 KB page size and Advertising ID. Terms are grouped (package & build, components & manifest, code, security & signing, network, native, privacy) and each one names the report tab where it shows up. Search matches the term and its aliases first (e.g. "obfuscation" finds R8 / ProGuard), then explanations. `GLOSSARY` is plain domain data; a unit test checks that terms are unique and every tab they name exists.
+
+## Alpha.23: call paths, and components first in the code index
+
+The method view in Kode gains a **Jalur** tab: the shortest chains of direct calls from a manifest component (an entry point the system runs) down to the method, with each step tappable. `CallGraph` (domain) searches the indexed calls backwards, breadth first, up to 5,000 methods and three paths.
+
+- A call through a supertype's declaration counts for its overrides (`Runnable.run` reaches `Task.run`), except through supertypes with more than 20 indexed subtypes. Following Kotlin's `Function1` let any lambda "call" any other and invented paths on F-Droid.
+- Inherited methods of a component's indexed superclasses are entry points too (`AppCompatActivity.attachBaseContext` runs for every activity extending it), labelled "activity lewat MainActivity".
+- When no component is reached, the partial chains up to the last caller are shown; these usually end at a framework callback, a listener or a coroutine lambda.
+
+**Index priority fix.** Testing this on F-Droid showed that none of its 36 components were in the code index. The index preferred classes under the application ID (`org.fdroid.fdroid`) while the code lives in `org.fdroid.*`, and the order only applied per DEX file, so androidx in classes.dex filled the index first. The scanner now loads every DEX first and indexes across all of them in three ranks: component classes, the app's namespaces (the package name, plus its first two segments when components live there), then libraries. F-Droid now has 33/36 components indexed (the other three are activity-aliases, which have no class). Component → code (alpha.21) and Jalur work on real apps as a result. A call path found there: `LocalRepoService.runProcess → LocalRepoManager.generateIndex → IndexV1Creator… → IndexUtils.md5`.

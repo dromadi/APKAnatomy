@@ -28,9 +28,13 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
     /**
      * @param traces receives every string of every DEX read, for endpoint and secret detection.
      * @param behaviors receives the sensitive calls and strings of every method read.
+     * @param entryClasses manifest component classes (dotted names); they are indexed before anything else, and
+     *   their packages' first two segments join [preferredPackage] as namespaces indexed before libraries.
      */
     fun scan(files: List<File>, preferredPackage: String? = null, traces: TraceCollector? = null,
-        behaviors: BehaviorCollector? = null, checkCancelled: () -> Unit = {}): CodeIndex {
+        behaviors: BehaviorCollector? = null, entryClasses: Collection<String> = emptyList(), checkCancelled: () -> Unit = {}): CodeIndex {
+        val entryTypes = entryClasses.mapTo(HashSet()) { "L" + it.replace('.', '/') + ";" }
+        val prefixes = preferredPrefixes(preferredPackage, entryClasses)
         val classes = mutableListOf<CodeClass>()
         val methods = mutableListOf<CodeMethod>()
         val calls = mutableListOf<MethodCall>()
@@ -44,9 +48,10 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
         val strings = mutableListOf<StringUse>()
         var definedClasses = 0
         var shortNamed = 0
-        var indexFull = false
         var xrefVisited = 0
         fun result() = CodeIndex(classes, methods, calls, warnings.toList(), packages.toList(), definedClasses, shortNamed, strings)
+        // 1. Load every DEX within the byte budget: packages and string pools cover all of them.
+        val loaded = mutableListOf<LoadedDex>()
         for ((index, file) in files.withIndex()) {
             val archive = if (index == 0) "base.apk" else file.name
             checkCancelled()
@@ -76,108 +81,13 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                                 definedClasses++
                                 if (name.substringAfterLast('/').substringBefore('$').length <= 2) shortNamed++
                             }
-                            var dexHasFindings = false
+                            val current = LoadedDex(archive, entry.name, dex)
                             if (traces != null) dex.stringSection.forEachIndexed { i, s ->
                                 if (i % 4096 == 0) checkCancelled()
                                 traces.scan(s, "$archive/${entry.name}")
-                                if (!dexHasFindings && traces.isInteresting(s)) dexHasFindings = true
+                                if (!current.hasFindings && traces.isInteresting(s)) current.hasFindings = true
                             }
-                            // Classes whose every method was read while indexing; the pass below skips them.
-                            val indexedTypes = HashSet<String>()
-                            // Methods already given to [behaviors], so a class revisited below is not counted twice.
-                            val reported = HashSet<String>()
-                            if (!indexFull) indexDex@ run {
-                            val prefix = preferredPackage?.takeIf { it.isNotBlank() }?.replace('.', '/')?.let { "L$it/" }
-                            val ordered = if (prefix == null) dex.classes.asSequence() else
-                                dex.classes.asSequence().filter { it.type.startsWith(prefix) } +
-                                    dex.classes.asSequence().filter { !it.type.startsWith(prefix) }
-                            classLoop@ for (cls in ordered) {
-                                checkCancelled()
-                                if (classes.size >= limits.classes) { warnings.add("Batas class tercapai; indeks hanya sebagian."); indexFull = true; break@classLoop }
-                                var complete = true
-                                classes.add(CodeClass(cls.type, cls.superclass, cls.interfaces.toList(), archive, entry.name))
-                                for (method in cls.methods) {
-                                    checkCancelled()
-                                    if (methods.size >= limits.methods) { warnings.add("Batas method tercapai; indeks hanya sebagian."); indexFull = true; break@classLoop }
-                                    val descriptor = ReferenceUtil.getMethodDescriptor(method)
-                                    val id = "$archive:${entry.name}:$descriptor"
-                                    val implementation = method.implementation
-                                    val lines = mutableListOf<String>()
-                                    var count = 0
-                                    var offset = 0
-                                    var truncated = false
-                                    val sensitiveCalls = ArrayList<Pair<String, String>>()
-                                    val loaded = ArrayList<String>()
-                                    if (implementation != null) {
-                                        for (instruction in implementation.instructions) {
-                                            if (visited >= limits.visitedInstructions) { warnings.add("Batas pemindaian instruksi tercapai; Find usage hanya mencakup instruksi terbaca."); truncated = true; complete = false; break }
-                                            if (visited % 256 == 0) checkCancelled()
-                                            visited++; count++
-                                            if (lines.size < 120 && displayed < limits.displayedInstructions) {
-                                                lines.add(renderInstruction(offset, instruction)); displayed++
-                                            } else truncated = true
-                                            if (instruction is ReferenceInstruction && instruction.reference is StringReference) {
-                                                val literal = (instruction.reference as StringReference).string
-                                                traces?.reference(literal, id)
-                                                if (loaded.size < MAX_METHOD_STRINGS) loaded.add(literal)
-                                                if (strings.size < limits.strings) strings.add(StringUse(id, literal.take(300)))
-                                                else warnings.add("Batas ${limits.strings} string literal tercapai; pencarian string hanya sebagian.")
-                                            }
-                                            if (instruction.opcode.name.startsWith("invoke", ignoreCase = true) && instruction is ReferenceInstruction && instruction.reference is MethodReference) {
-                                                val target = instruction.reference as MethodReference
-                                                if (behaviors != null && behaviors.watches(target.definingClass)) sensitiveCalls.add(target.definingClass to target.name)
-                                                if (calls.size < limits.calls) calls.add(MethodCall(id, ReferenceUtil.getMethodDescriptor(instruction.reference as MethodReference), offset))
-                                                else warnings.add("Batas referensi pemanggilan tercapai; Find usage hanya sebagian.")
-                                            }
-                                            offset += instruction.codeUnits
-                                        }
-                                    }
-                                    if (behaviors != null && complete) {
-                                        behaviors.method(id, sensitiveCalls, loaded, count)
-                                        pattern(cls, method)?.let { behaviors.pattern(it, id) }
-                                        reported.add(id)
-                                    }
-                                    methods.add(CodeMethod(descriptor, cls.type, method.name, archive, entry.name,
-                                        AccessFlags.getAccessFlagsForMethod(method.accessFlags).joinToString(" ") { it.toString() },
-                                        implementation != null, lines, count, truncated))
-                                }
-                                if (complete) indexedTypes.add(cls.type)
-                            }
-                            }
-                            // Strings found in the pools should lead back to code, and behaviours be found, even when the index is full.
-                            // A DEX can only load strings from its own pool, so string links are skipped for pools without findings.
-                            val linkStrings = traces != null && dexHasFindings
-                            if (linkStrings || behaviors != null) xref@ for (cls in dex.classes) {
-                                if (cls.type in indexedTypes) continue
-                                for (method in cls.methods) {
-                                    val implementation = method.implementation ?: continue
-                                    val id = "$archive:${entry.name}:${ReferenceUtil.getMethodDescriptor(method)}"
-                                    val sensitiveCalls = ArrayList<Pair<String, String>>(0)
-                                    val loaded = ArrayList<String>(0)
-                                    var count = 0
-                                    for (instruction in implementation.instructions) {
-                                        if (++xrefVisited > limits.xrefInstructions) {
-                                            warnings.add("Batas pemindaian tambahan tercapai; tautan \"Dipakai di\" dan tab Perilaku hanya sebagian.")
-                                            behaviors?.note("Batas ${limits.xrefInstructions} instruksi tercapai; sebagian kode tidak diperiksa.")
-                                            break@xref
-                                        }
-                                        if (xrefVisited % 4096 == 0) checkCancelled()
-                                        count++
-                                        if (instruction !is ReferenceInstruction) continue
-                                        when (val reference = instruction.reference) {
-                                            is StringReference -> {
-                                                if (linkStrings) traces!!.reference(reference.string, id)
-                                                if (behaviors != null && loaded.size < MAX_METHOD_STRINGS) loaded.add(reference.string)
-                                            }
-                                            is MethodReference -> if (behaviors != null && behaviors.watches(reference.definingClass)) sensitiveCalls.add(reference.definingClass to reference.name)
-                                        }
-                                    }
-                                    if (behaviors != null && id !in reported) {
-                                        behaviors.method(id, sensitiveCalls, loaded, count)
-                                        pattern(cls, method)?.let { behaviors.pattern(it, id) }
-                                    }
-                                }
-                            }
+                            loaded += current
                         } catch (cancelled: CancellationException) { throw cancelled }
                         catch (_: Exception) { warnings.add("${archive}/${entry.name} tidak dapat diindeks seluruhnya: DEX rusak atau belum didukung.") }
                     }
@@ -185,11 +95,134 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { warnings.add("Arsip $archive tidak dapat dibaca untuk indeks kode.") }
         }
+
+        // 2. Index across all DEX files by priority: components first, then the app's own namespaces, then libraries.
+        // Apps spread their code over classes2.dex, classes3.dex..., so a per-file order would let libraries fill the index.
+        fun rank(type: String) = when { type in entryTypes -> 0; prefixes.any { type.startsWith(it) } -> 1; else -> 2 }
+        indexing@ for (r in 0..2) for (current in loaded) {
+            val archive = current.archive
+            try {
+                for (cls in current.dex.classes) {
+                    if (rank(cls.type) != r) continue
+                    checkCancelled()
+                    if (classes.size >= limits.classes) { warnings.add("Batas class tercapai; indeks hanya sebagian."); break@indexing }
+                    var complete = true
+                    classes.add(CodeClass(cls.type, cls.superclass, cls.interfaces.toList(), archive, current.name))
+                    for (method in cls.methods) {
+                        checkCancelled()
+                        if (methods.size >= limits.methods) { warnings.add("Batas method tercapai; indeks hanya sebagian."); break@indexing }
+                        val descriptor = ReferenceUtil.getMethodDescriptor(method)
+                        val id = "$archive:${current.name}:$descriptor"
+                        val implementation = method.implementation
+                        val lines = mutableListOf<String>()
+                        var count = 0
+                        var offset = 0
+                        var truncated = false
+                        val sensitiveCalls = ArrayList<Pair<String, String>>()
+                        val strs = ArrayList<String>()
+                        if (implementation != null) {
+                            for (instruction in implementation.instructions) {
+                                if (visited >= limits.visitedInstructions) { warnings.add("Batas pemindaian instruksi tercapai; Find usage hanya mencakup instruksi terbaca."); truncated = true; complete = false; break }
+                                if (visited % 256 == 0) checkCancelled()
+                                visited++; count++
+                                if (lines.size < 120 && displayed < limits.displayedInstructions) {
+                                    lines.add(renderInstruction(offset, instruction)); displayed++
+                                } else truncated = true
+                                if (instruction is ReferenceInstruction && instruction.reference is StringReference) {
+                                    val literal = (instruction.reference as StringReference).string
+                                    traces?.reference(literal, id)
+                                    if (strs.size < MAX_METHOD_STRINGS) strs.add(literal)
+                                    if (strings.size < limits.strings) strings.add(StringUse(id, literal.take(300)))
+                                    else warnings.add("Batas ${limits.strings} string literal tercapai; pencarian string hanya sebagian.")
+                                }
+                                if (instruction.opcode.name.startsWith("invoke", ignoreCase = true) && instruction is ReferenceInstruction && instruction.reference is MethodReference) {
+                                    val target = instruction.reference as MethodReference
+                                    if (behaviors != null && behaviors.watches(target.definingClass)) sensitiveCalls.add(target.definingClass to target.name)
+                                    if (calls.size < limits.calls) calls.add(MethodCall(id, ReferenceUtil.getMethodDescriptor(target), offset))
+                                    else warnings.add("Batas referensi pemanggilan tercapai; Find usage hanya sebagian.")
+                                }
+                                offset += instruction.codeUnits
+                            }
+                        }
+                        if (behaviors != null && complete) {
+                            behaviors.method(id, sensitiveCalls, strs, count)
+                            pattern(cls, method)?.let { behaviors.pattern(it, id) }
+                            current.reported.add(id)
+                        }
+                        methods.add(CodeMethod(descriptor, cls.type, method.name, archive, current.name,
+                            AccessFlags.getAccessFlagsForMethod(method.accessFlags).joinToString(" ") { it.toString() },
+                            implementation != null, lines, count, truncated))
+                    }
+                    if (complete) current.indexedTypes.add(cls.type)
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { warnings.add("${archive}/${current.name} tidak dapat diindeks seluruhnya: DEX rusak atau belum didukung.") }
+        }
+
+        // 3. Strings found in the pools should lead back to code, and behaviours be found, even beyond the index.
+        // A DEX can only load strings from its own pool, so string links are skipped for pools without findings.
+        xref@ for (current in loaded) {
+            val linkStrings = traces != null && current.hasFindings
+            if (!linkStrings && behaviors == null) continue
+            try {
+                for (cls in current.dex.classes) {
+                    if (cls.type in current.indexedTypes) continue
+                    for (method in cls.methods) {
+                        val implementation = method.implementation ?: continue
+                        val id = "${current.archive}:${current.name}:${ReferenceUtil.getMethodDescriptor(method)}"
+                        val sensitiveCalls = ArrayList<Pair<String, String>>(0)
+                        val strs = ArrayList<String>(0)
+                        var count = 0
+                        for (instruction in implementation.instructions) {
+                            if (++xrefVisited > limits.xrefInstructions) {
+                                warnings.add("Batas pemindaian tambahan tercapai; tautan \"Dipakai di\" dan tab Perilaku hanya sebagian.")
+                                behaviors?.note("Batas ${limits.xrefInstructions} instruksi tercapai; sebagian kode tidak diperiksa.")
+                                break@xref
+                            }
+                            if (xrefVisited % 4096 == 0) checkCancelled()
+                            count++
+                            if (instruction !is ReferenceInstruction) continue
+                            when (val reference = instruction.reference) {
+                                is StringReference -> {
+                                    if (linkStrings) traces!!.reference(reference.string, id)
+                                    if (behaviors != null && strs.size < MAX_METHOD_STRINGS) strs.add(reference.string)
+                                }
+                                is MethodReference -> if (behaviors != null && behaviors.watches(reference.definingClass)) sensitiveCalls.add(reference.definingClass to reference.name)
+                            }
+                        }
+                        if (behaviors != null && id !in current.reported) {
+                            behaviors.method(id, sensitiveCalls, strs, count)
+                            pattern(cls, method)?.let { behaviors.pattern(it, id) }
+                        }
+                    }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { warnings.add("${current.archive}/${current.name} tidak dapat diindeks seluruhnya: DEX rusak atau belum didukung.") }
+        }
         return result()
     }
 }
 
 private const val MAX_METHOD_STRINGS = 64
+
+/** A DEX file held in memory between the scan phases; [indexedTypes] were read completely while indexing. */
+private class LoadedDex(val archive: String, val name: String, val dex: DexBackedDexFile) {
+    var hasFindings = false
+    val indexedTypes = HashSet<String>()
+    /** Methods already given to the behaviour collector, so the last pass does not count them twice. */
+    val reported = HashSet<String>()
+}
+
+/**
+ * DEX type prefixes of the app's own code: the package name, and the first two segments of it when components
+ * live there too. The application ID often differs from the code namespace (org.fdroid.fdroid vs org.fdroid.*).
+ */
+internal fun preferredPrefixes(packageName: String?, entryClasses: Collection<String>): List<String> {
+    val name = packageName?.takeIf { it.isNotBlank() } ?: return emptyList()
+    val root = name.split('.').take(2).joinToString(".")
+    val roots = listOf(name) + listOf(root).filter { r -> r != name && '.' in r && entryClasses.any { it.startsWith("$r.") } }
+    return roots.map { "L" + it.replace('.', '/') + "/" }
+}
 
 private val TRUST_MANAGERS = setOf("Ljavax/net/ssl/X509TrustManager;", "Ljavax/net/ssl/X509ExtendedTrustManager;")
 

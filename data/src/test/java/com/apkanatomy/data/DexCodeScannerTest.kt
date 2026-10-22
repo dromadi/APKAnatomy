@@ -152,6 +152,29 @@ class DexCodeScannerTest {
             .end method
         """)
     }
+    @Test fun indexesComponentsAndTheAppNamespaceFirstAcrossDexFiles() {
+        val root = Files.createTempDirectory("dex-priority").toFile()
+        try {
+            fun dex(name: String, vararg types: String): ByteArray {
+                val dir = File(root, name).apply { mkdirs() }
+                types.forEachIndexed { i, t -> File(dir, "C$i.smali").writeText(".class public $t\n.super Ljava/lang/Object;\n") }
+                val out = File(root, "$name.dex")
+                assertTrue(Smali.assemble(SmaliOptions().apply { outputDexFile = out.absolutePath; apiLevel = 26 }, dir.listFiles()!!.map { it.absolutePath }))
+                return out.readBytes()
+            }
+            val apk = File(root, "multi.apk")
+            ZipOutputStream(apk.outputStream()).use { zip ->
+                // Libraries fill classes.dex; the app's code and its activity sit in classes2.dex.
+                zip.putNextEntry(ZipEntry("classes.dex")); zip.write(dex("one", "Landroidx/core/A;", "Landroidx/core/B;", "Lokio/C;")); zip.closeEntry()
+                zip.putNextEntry(ZipEntry("classes2.dex")); zip.write(dex("two", "Lorg/shop/ui/Main;", "Lorg/shop/data/Repo;", "Lcoil/D;")); zip.closeEntry()
+            }
+            val result = DexCodeScanner(CodeLimits(classes = 2)).scan(listOf(apk), "org.shop.app", entryClasses = listOf("org.shop.ui.Main"))
+            assertEquals(listOf("Lorg/shop/ui/Main;", "Lorg/shop/data/Repo;"), result.classes.map { it.type })
+            assertEquals(listOf("Lorg/shop/app/", "Lorg/shop/"), preferredPrefixes("org.shop.app", listOf("org.shop.ui.Main")))
+            // Without components in that namespace, only the package name itself is preferred.
+            assertEquals(listOf("Lcom/google/maps/"), preferredPrefixes("com.google.maps", listOf("com.other.X")))
+        } finally { root.deleteRecursively() }
+    }
     private fun fixture(block: (File) -> Unit) = fixture({}, block)
     private fun fixture(extra: (File) -> Unit, block: (File) -> Unit) {
         val root = Files.createTempDirectory("dex-code-test").toFile()

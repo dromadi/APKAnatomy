@@ -91,6 +91,20 @@ class RichReportScreenTest {
         compose.onAllNodes(androidx.compose.ui.test.hasText("Class ini tidak ada", substring = true)).fetchSemanticsNodes().let { assert(it.isNotEmpty()) }
     }
 
+    @Test fun callPathLeadsFromTheComponentToTheMethod() {
+        show()
+        compose.openTab("Jejak")
+        compose.scrollToText("api.contoh.id")
+        compose.onNodeWithText("→ id.contoh.toko.net.Api.checkout()").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Jalur").performClick()
+        compose.onNodeWithText("Jalur 1 · 2 langkah").assertExists()
+        compose.onNodeWithText("id.contoh.toko.checkout.PaymentActivity.onCreate(…) · activity").assertExists()
+        compose.shot("rich_call_path")
+        compose.onNodeWithText("id.contoh.toko.checkout.PaymentActivity.onCreate(…) · activity").performClick()
+        compose.onNodeWithText("Lid/contoh/toko/checkout/PaymentActivity;->onCreate(Landroid/os/Bundle;)V").assertExists()
+    }
+
     @Test fun codeTabSearchesStringLiterals() {
         show()
         compose.openTab("Kode")

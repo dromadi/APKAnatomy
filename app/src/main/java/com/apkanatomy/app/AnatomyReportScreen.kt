@@ -67,7 +67,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
             "Kemampuan" -> CapabilitiesScreen(report.capabilities)
             "Perilaku" -> BehaviorScreen(report.behaviors, report.code.methods.mapTo(HashSet()) { it.id }, openMethod)
             "Isi APK" -> ArchiveBrowser(report.structure, loadPreview)
-            "Kode" -> CodeExplorer(report.code, pendingMethod, pendingClass) { pendingMethod = null; pendingClass = null }
+            "Kode" -> CodeExplorer(report.code, pendingMethod, pendingClass, remember(report.components) { report.components.entryTypes() }) { pendingMethod = null; pendingClass = null }
             "Manifest" -> ManifestScreen(report)
             "DNA" -> DnaScreen(report)
             "Kulit" -> SkinScreen(report)

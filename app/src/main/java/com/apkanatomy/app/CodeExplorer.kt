@@ -15,7 +15,9 @@ import androidx.compose.ui.unit.dp
 import com.apkanatomy.domain.*
 
 @Composable
-internal fun CodeExplorer(index: CodeIndex, openMethodId: String? = null, openClassId: String? = null, onOpened: () -> Unit = {}) {
+internal fun CodeExplorer(index: CodeIndex, openMethodId: String? = null, openClassId: String? = null,
+    /** Manifest component types, where call paths start. */
+    entryTypes: Map<String, ComponentKind> = emptyMap(), onOpened: () -> Unit = {}) {
     var query by rememberSaveable { mutableStateOf("") }
     var selectedClassId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedMethodId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -32,13 +34,15 @@ internal fun CodeExplorer(index: CodeIndex, openMethodId: String? = null, openCl
     }
     val methodById = remember(index) { index.methods.associateBy { it.id } }
     val methodsByDescriptor = remember(index) { index.methods.groupBy { it.descriptor } }
+    val graph = remember(index) { CallGraph(index) }
+    val entryPoints = remember(graph, entryTypes) { graph.entryPoints(entryTypes) }
     val selectedClass = remember(index, selectedClassId) { index.classes.find { it.id == selectedClassId } }
     val selectedMethod = methodById[selectedMethodId]
     BackHandler(selectedClass != null || selectedMethod != null) {
         if (selectedMethod != null) backMethod() else selectedClassId = null
     }
     if (selectedMethod != null) {
-        MethodDetail(index, selectedMethod, methodById, methodsByDescriptor,
+        MethodDetail(index, selectedMethod, methodById, methodsByDescriptor, graph, entryPoints,
             back = { backMethod() }, open = {
                 methodHistory = (methodHistory + selectedMethod.id).takeLast(20)
                 selectedMethodId = it
@@ -89,14 +93,17 @@ internal fun CodeExplorer(index: CodeIndex, openMethodId: String? = null, openCl
 @Composable
 private fun MethodDetail(index: CodeIndex, method: CodeMethod,
     byId: Map<String, CodeMethod>, byDescriptor: Map<String, List<CodeMethod>>,
+    graph: CallGraph, entryPoints: Map<String, String>,
     back: () -> Unit, open: (String) -> Unit) {
     var tab by rememberSaveable(method.id) { mutableIntStateOf(0) }
     TextButton(onClick = back) { Text("Kembali") }
-    PrimaryTabRow(selectedTabIndex = tab) {
-        listOf("Instruksi", "Memanggil", "Find usage").forEachIndexed { i, label -> Tab(tab == i, { tab = i }, text = { Text(label) }) }
+    PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
+        listOf("Instruksi", "Memanggil", "Find usage", "Jalur").forEachIndexed { i, label -> Tab(tab == i, { tab = i }, text = { Text(label) }) }
     }
     val outgoing = remember(index, method) { index.callsFrom(method.id) }
     val incoming = remember(index, method) { index.callersOf(method.descriptor) }
+    // Only computed when the tab is open; a search can visit thousands of methods.
+    val paths = remember(index, method, tab == 3) { if (tab == 3) graph.pathsTo(method.id, entryPoints.keys) else null }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item { CodeCard(method.descriptor, "${method.access}\n${method.archive}/${method.dex}") }
         if (index.warnings.isNotEmpty()) item { CodeCard("Indeks sebagian", "Ada batas atau kegagalan pemindaian. Hasil Find usage tidak mencakup seluruh aplikasi; lihat peringatan pada pencarian kode.") }
@@ -128,6 +135,32 @@ private fun MethodDetail(index: CodeIndex, method: CodeMethod,
                     val caller = byId[call.callerId]
                     CodeCard(caller?.descriptor ?: call.callerId, "Offset: 0x${call.offset.toString(16)}\n${caller?.archive.orEmpty()}/${caller?.dex.orEmpty()}", onClick = caller?.let { { open(it.id) } })
                 }
+            }
+            3 -> if (paths != null) {
+                item {
+                    Text("Rantai pemanggilan langsung dari komponen manifest (titik masuk yang dijalankan sistem) sampai method ini, terpendek lebih dulu. " +
+                        "Pemanggilan lewat superclass/interface ikut dihitung, kecuali interface yang dipakai sangat banyak class (mis. lambda Kotlin); callback framework dan reflection tidak terlihat.", style = MaterialTheme.typography.bodySmall)
+                }
+                val chains = paths.paths.ifEmpty { paths.partial }
+                if (paths.paths.isEmpty()) item {
+                    CodeCard("Tidak sampai ke komponen", if (paths.partial.isEmpty()) "Tidak ada pemanggil langsung dalam indeks. Method ini mungkin dipanggil framework (mis. onClick, onReceive), lambda, atau reflection."
+                        else "Rantai di bawah berhenti di method yang tidak dipanggil langsung oleh kode terindeks; biasanya callback framework, listener, atau lambda.")
+                }
+                items(chains.withIndex().toList(), key = { "path${it.index}" }) { (i, chain) ->
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text("Jalur ${i + 1} · ${chain.size} langkah", style = MaterialTheme.typography.titleSmall)
+                            chain.forEachIndexed { step, id ->
+                                val target = byId[id]
+                                val entry = target?.let { entryPoints[it.owner] }
+                                val label = (if (step == 0) "" else "↓ ") + prettyMethod(id) + (entry?.let { " · $it" } ?: "")
+                                if (target != null && id != method.id) TextButton(onClick = { open(id) }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text(label, style = MaterialTheme.typography.bodySmall) }
+                                else Text(label, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp))
+                            }
+                        }
+                    }
+                }
+                if (paths.truncated) item { Text("Pencarian dibatasi; mungkin ada jalur lain.", style = MaterialTheme.typography.bodySmall) }
             }
         }
         if ((tab == 1 && outgoing.size > 250) || (tab == 2 && incoming.size > 250)) item { Text("Daftar menampilkan 250 call-site pertama.") }
