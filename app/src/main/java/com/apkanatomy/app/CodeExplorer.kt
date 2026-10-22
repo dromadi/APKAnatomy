@@ -17,7 +17,10 @@ import com.apkanatomy.domain.*
 @Composable
 internal fun CodeExplorer(index: CodeIndex, openMethodId: String? = null, openClassId: String? = null,
     /** Manifest component types, where call paths start. */
-    entryTypes: Map<String, ComponentKind> = emptyMap(), onOpened: () -> Unit = {}) {
+    entryTypes: Map<String, ComponentKind> = emptyMap(),
+    /** Reads a method's control-flow graph from the DEX; reports opened from history cannot. */
+    loadFlow: suspend (String) -> ControlFlow = { ControlFlow(emptyList(), false, "Diagram alur tidak tersedia di sini.") },
+    onOpened: () -> Unit = {}) {
     var query by rememberSaveable { mutableStateOf("") }
     var selectedClassId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedMethodId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -42,7 +45,7 @@ internal fun CodeExplorer(index: CodeIndex, openMethodId: String? = null, openCl
         if (selectedMethod != null) backMethod() else selectedClassId = null
     }
     if (selectedMethod != null) {
-        MethodDetail(index, selectedMethod, methodById, methodsByDescriptor, graph, entryPoints,
+        MethodDetail(index, selectedMethod, methodById, methodsByDescriptor, graph, entryPoints, loadFlow,
             back = { backMethod() }, open = {
                 methodHistory = (methodHistory + selectedMethod.id).takeLast(20)
                 selectedMethodId = it
@@ -93,18 +96,20 @@ internal fun CodeExplorer(index: CodeIndex, openMethodId: String? = null, openCl
 @Composable
 private fun MethodDetail(index: CodeIndex, method: CodeMethod,
     byId: Map<String, CodeMethod>, byDescriptor: Map<String, List<CodeMethod>>,
-    graph: CallGraph, entryPoints: Map<String, String>,
+    graph: CallGraph, entryPoints: Map<String, String>, loadFlow: suspend (String) -> ControlFlow,
     back: () -> Unit, open: (String) -> Unit) {
     var tab by rememberSaveable(method.id) { mutableIntStateOf(0) }
     var showPseudo by rememberSaveable(method.id) { mutableStateOf(method.pseudo.isNotEmpty()) }
     TextButton(onClick = back) { Text("Kembali") }
     PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
-        listOf("Instruksi", "Memanggil", "Find usage", "Jalur").forEachIndexed { i, label -> Tab(tab == i, { tab = i }, text = { Text(label) }) }
+        listOf("Instruksi", "Alur", "Memanggil", "Find usage", "Jalur").forEachIndexed { i, label -> Tab(tab == i, { tab = i }, text = { Text(label) }) }
     }
     val outgoing = remember(index, method) { index.callsFrom(method.id) }
     val incoming = remember(index, method) { index.callersOf(method.descriptor) }
     // Only computed when the tab is open; a search can visit thousands of methods.
-    val paths = remember(index, method, tab == 3) { if (tab == 3) graph.pathsTo(method.id, entryPoints.keys) else null }
+    val paths = remember(index, method, tab == 4) { if (tab == 4) graph.pathsTo(method.id, entryPoints.keys) else null }
+    var flow by remember(method.id) { mutableStateOf<ControlFlow?>(null) }
+    LaunchedEffect(method.id, tab == 1) { if (tab == 1 && flow == null) flow = loadFlow(method.id) }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item { CodeCard(method.descriptor, "${method.access}\n${method.archive}/${method.dex}") }
         if (index.warnings.isNotEmpty()) item { CodeCard("Indeks sebagian", "Ada batas atau kegagalan pemindaian. Hasil Find usage tidak mencakup seluruh aplikasi; lihat peringatan pada pencarian kode.") }
@@ -128,6 +133,11 @@ private fun MethodDetail(index: CodeIndex, method: CodeMethod,
                 if (method.truncated) item { Text("Tampilan/pemindaian instruksi dibatasi. ${method.instructionCount} instruksi terbaca; daftar bukan keseluruhan method.") }
             }
             1 -> {
+                val f = flow
+                if (f == null) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                else item(key = "flow") { FlowDiagram(f) }
+            }
+            2 -> {
                 item { Text("${outgoing.size} pemanggilan langsung ditemukan. Ketuk tujuan yang memiliki definisi dalam indeks. Target library/platform dapat berada di luar APK.", style = MaterialTheme.typography.bodySmall) }
                 items(outgoing.take(250).withIndex().toList(), key = { it.index }) { indexed ->
                     val call = indexed.value
@@ -140,7 +150,7 @@ private fun MethodDetail(index: CodeIndex, method: CodeMethod,
                     }, onClick = target?.let { { open(it.id) } })
                 }
             }
-            2 -> {
+            3 -> {
                 item { Text("${incoming.size} call-site mengacu pada signature ini. Ini referensi statis, bukan bukti method dieksekusi. Reflection, pemuatan dinamis, invoke-custom, dan resolusi dispatch saat runtime tidak dipetakan.", style = MaterialTheme.typography.bodySmall) }
                 if (incoming.isEmpty()) item { Text("Tidak ada pemanggilan langsung dalam instruksi yang berhasil diindeks. Method masih bisa dipanggil framework atau secara dinamis.") }
                 items(incoming.take(250).withIndex().toList(), key = { it.index }) { indexed ->
@@ -149,7 +159,7 @@ private fun MethodDetail(index: CodeIndex, method: CodeMethod,
                     CodeCard(caller?.descriptor ?: call.callerId, "Offset: 0x${call.offset.toString(16)}\n${caller?.archive.orEmpty()}/${caller?.dex.orEmpty()}", onClick = caller?.let { { open(it.id) } })
                 }
             }
-            3 -> if (paths != null) {
+            4 -> if (paths != null) {
                 item {
                     Text("Rantai pemanggilan langsung dari komponen manifest (titik masuk yang dijalankan sistem) sampai method ini, terpendek lebih dulu. " +
                         "Pemanggilan lewat superclass/interface ikut dihitung, kecuali interface yang dipakai sangat banyak class (mis. lambda Kotlin); callback framework dan reflection tidak terlihat.", style = MaterialTheme.typography.bodySmall)
@@ -176,7 +186,7 @@ private fun MethodDetail(index: CodeIndex, method: CodeMethod,
                 if (paths.truncated) item { Text("Pencarian dibatasi; mungkin ada jalur lain.", style = MaterialTheme.typography.bodySmall) }
             }
         }
-        if ((tab == 1 && outgoing.size > 250) || (tab == 2 && incoming.size > 250)) item { Text("Daftar menampilkan 250 call-site pertama.") }
+        if ((tab == 2 && outgoing.size > 250) || (tab == 3 && incoming.size > 250)) item { Text("Daftar menampilkan 250 call-site pertama.") }
     }
 }
 

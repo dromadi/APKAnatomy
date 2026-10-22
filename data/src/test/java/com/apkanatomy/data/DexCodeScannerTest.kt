@@ -4,6 +4,8 @@ import com.apkanatomy.domain.BehaviorCollector
 import com.apkanatomy.domain.BehaviorPatterns
 import org.junit.Assert.*
 import org.junit.Test
+import com.apkanatomy.domain.EdgeKind
+import com.apkanatomy.domain.FlowEdge
 import org.jf.smali.Smali
 import org.jf.smali.SmaliOptions
 import java.nio.file.Files
@@ -230,6 +232,58 @@ class DexCodeScannerTest {
             // Without components in that namespace, only the package name itself is preferred.
             assertEquals(listOf("Lcom/google/maps/"), preferredPrefixes("com.google.maps", listOf("com.other.X")))
         } finally { root.deleteRecursively() }
+    }
+    @Test fun readsTheControlFlowOfOneMethod() = fixture({ root ->
+        File(root, "Flow.smali").writeText("""
+            .class public Lsample/Flow;
+            .super Ljava/lang/Object;
+            .method public static run(I)I
+                .registers 3
+                const/4 v0, 0x0
+                :loop
+                if-ge v0, p0, :done
+                add-int/lit8 v0, v0, 0x1
+                goto :loop
+                :done
+                packed-switch v0, :table
+                const/4 v1, 0x0
+                return v1
+                :one
+                :try_start
+                invoke-static {}, Lsample/Demo;->download()V
+                :try_end
+                .catch Ljava/io/IOException; {:try_start .. :try_end} :failed
+                const/4 v1, 0x1
+                return v1
+                :failed
+                move-exception v1
+                throw v1
+                :table
+                .packed-switch 0x1
+                    :one
+                    :one
+                .end packed-switch
+            .end method
+        """.trimIndent())
+    }) { apk ->
+        val id = "base.apk:classes.dex:Lsample/Flow;->run(I)I"
+        val flow = ControlFlowReader.read(mapOf("base.apk" to apk), id)
+        assertNull(flow.note)
+        // entry, loop test, loop body, switch, default, try, after try, handler
+        assertEquals(8, flow.blocks.size)
+        val kinds = flow.blocks.map { b -> b.edges.map { it.kind } }
+        assertEquals(listOf(EdgeKind.TRUE, EdgeKind.FALSE), kinds[1])
+        assertTrue(flow.isBack(flow.blocks[2], flow.blocks[2].edges.single()))
+        val switch = flow.blocks[3].edges
+        assertEquals(listOf(FlowEdge(5, EdgeKind.CASE, "1, 2"), FlowEdge(4, EdgeKind.DEFAULT)), switch)
+        assertEquals(listOf(FlowEdge(6, EdgeKind.NEXT), FlowEdge(7, EdgeKind.CATCH, "IOException")), flow.blocks[5].edges)
+        assertEquals("throw", flow.blocks[7].exit)
+        assertTrue(flow.blocks[3].lines.single().contains("packed-switch"))
+        // if, switch with one case target: complexity 3; one loop.
+        assertEquals(3, flow.complexity)
+        assertEquals(1, flow.loops)
+        assertNotNull(ControlFlowReader.read(mapOf("base.apk" to apk), "base.apk:classes.dex:Lsample/Nope;->x()V").note)
+        assertNotNull(ControlFlowReader.read(emptyMap(), id).note)
     }
     private fun fixture(block: (File) -> Unit) = fixture({}, block)
     private fun fixture(extra: (File) -> Unit, block: (File) -> Unit) {

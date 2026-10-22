@@ -12,7 +12,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
-import com.apkanatomy.domain.FilePreview
+import com.apkanatomy.domain.*
+import org.junit.Assert.assertEquals
 import com.apkanatomy.domain.toHtml
 import org.junit.Rule
 import org.junit.Test
@@ -102,12 +103,45 @@ class RichReportScreenTest {
         compose.scrollToText("api.contoh.id")
         compose.onNodeWithText("→ id.contoh.toko.net.Api.checkout()").performClick()
         compose.waitForIdle()
-        compose.onNodeWithText("Jalur").performClick()
+        compose.onNodeWithText("Jalur").performScrollTo().performClick()
         compose.onNodeWithText("Jalur 1 · 2 langkah").assertExists()
         compose.onNodeWithText("id.contoh.toko.checkout.PaymentActivity.onCreate(…) · activity").assertExists()
         compose.shot("rich_call_path")
         compose.onNodeWithText("id.contoh.toko.checkout.PaymentActivity.onCreate(…) · activity").performClick()
         compose.onNodeWithText("Lid/contoh/toko/checkout/PaymentActivity;->onCreate(Landroid/os/Bundle;)V").assertExists()
+    }
+
+    @Test fun methodShowsItsControlFlowDiagram() {
+        fun ins(offset: Int, text: String, kind: FlowKind = FlowKind.NEXT, vararg targets: Int, keys: List<Int> = emptyList()) =
+            FlowInstruction(offset, 1, "0x${offset.toString(16)}  $text", kind, targets.toList(), keys)
+        val flow = controlFlow(listOf(
+            ins(0, "const/4 v0 · literal=0"),
+            ins(1, "if-ge v0, p1 · target=0x5", FlowKind.BRANCH, 5),
+            ins(2, "invoke-virtual {p0}, Lid/contoh/toko/net/Api;->ping()V"), ins(3, "add-int/lit8 v0, v0"),
+            ins(4, "goto · target=0x1", FlowKind.GOTO, 1),
+            ins(5, "packed-switch v0 · target=0x10", FlowKind.SWITCH, 7, 8, 7, keys = listOf(0, 1, 2)),
+            ins(6, "return-void", FlowKind.RETURN),
+            ins(7, "invoke-static {}, Lid/contoh/toko/net/Api;->checkout()V"),
+            ins(8, "new-instance v1, Ljava/lang/IllegalStateException;"), ins(9, "throw v1", FlowKind.THROW)),
+            listOf(FlowTry(7, 8, listOf("Ljava/io/IOException;" to 6))))
+        var asked: String? = null
+        compose.setContent {
+            MaterialTheme { androidx.compose.material3.Surface { Column(Modifier.fillMaxSize().padding(16.dp)) {
+                AnatomyReportScreen(richReport(), { FilePreview.Unavailable("—") }, loadFlow = { asked = it; flow })
+            } } }
+        }
+        compose.openTab("Jejak")
+        compose.scrollToText("api.contoh.id")
+        compose.onNodeWithText("→ id.contoh.toko.net.Api.checkout()").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Alur").performClick()
+        compose.waitForIdle()
+        assertEquals("Lid/contoh/toko/net/Api;->checkout()V", asked?.substringAfter("classes.dex:"))
+        compose.onNodeWithText("7 blok · kompleksitas 4 · 1 perulangan").assertExists()
+        compose.onNodeWithText("jika benar → B3").assertExists()
+        compose.onNodeWithText("lompat (goto) → B1 ↺ kembali (perulangan)").assertExists()
+        compose.onNodeWithText("case 0, 2 → B5").assertExists()
+        compose.shot("rich_control_flow")
     }
 
     @Test fun dnaWarnsWhenAFileIsSignedByAnotherKeyThanTheInstalledApp() {

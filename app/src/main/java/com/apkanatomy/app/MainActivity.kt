@@ -33,6 +33,7 @@ import kotlinx.coroutines.withContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.apkanatomy.data.ANALYSIS_STEPS
 import com.apkanatomy.data.HistoryEntry
+import com.apkanatomy.data.HistoryStore
 import com.apkanatomy.domain.*
 
 class MainActivity : ComponentActivity() {
@@ -88,7 +89,8 @@ private fun AnatomyApp(model: AnatomyViewModel) {
                     else -> AppList(state.apps, state.busy, model::inspect)
                 }
             }
-            else AnatomyReportScreen(report, model::preview, state.baseline.takeUnless { state.reportIsBaseline }, model::clearBaseline, model::resources)
+            else AnatomyReportScreen(report, model::preview, state.baseline.takeUnless { state.reportIsBaseline }, model::clearBaseline, model::resources,
+                if (report.source.startsWith(HistoryStore.FROM_HISTORY)) { _ -> ControlFlow(emptyList(), false, "Laporan dari riwayat tidak menyimpan file APK-nya; analisis ulang aplikasinya untuk melihat diagram alur.") } else model::controlFlow)
         }
     }
 }

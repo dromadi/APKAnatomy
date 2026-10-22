@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.40
+# APKAnatomy 0.1.0-alpha.41
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -426,3 +426,15 @@ The Audit tab has **Simpan CSV** and **Simpan HTML** next to "Audit ulang", save
 
 - **CSV** (`toAuditCsv`, domain) has one row per app, highest points first. Columns: label, package, version, system, targetSdk, points, debuggable, allowBackup, cleartext, installer, open components, data categories, trackers with purpose, permissions, reasons and note. Every cell is quoted (RFC 4180, CRLF), and the file starts with a UTF-8 BOM so Excel reads it correctly. Labels come from the apps themselves, so a cell starting with `= + - @` gets a leading `'` and a spreadsheet does not run it as a formula.
 - **HTML** (`toAuditHtml`) is self-contained and uses the report export's stylesheet (light and dark). It has the summary cards per filter, the changes since the previous audit when there is a diff, and a table of apps with their reasons. All app text is escaped, and the CSP forbids scripts and remote loads. Package names in a table's first column no longer break mid-word.
+
+## Alpha.41: control-flow diagram of a method
+
+A method in the Kode tab has a new **Alur** tab: its control-flow graph, read on demand from the DEX.
+
+- `ControlFlowReader` (data) reads the method again from its `classesN.dex`. The code index keeps only 120 listed instructions per method, and the switch payloads and try blocks are needed here. It caches the last DEX it parsed, so opening several methods of one file costs about 3 ms each instead of 70 ms on F-Droid. The cache is cleared with the report.
+- `controlFlow()` (domain) splits the instructions into basic blocks. A block starts at the first instruction, at every jump and case target, after every jump, switch, return and throw, and at try boundaries and handlers. Edges are typed: next, goto, true, false, case (keys sharing a target are merged), default, and catch (with the exception type). Limits: 300 blocks and 40 lines per block.
+- The diagram stacks the blocks in code order. Jumps are lines in a left gutter, each in the innermost free lane, and loops are dashed. Each block lists its exits in words, such as "jika benar → B3" or "bila exception IOException → B8".
+- The header gives the number of blocks, cyclomatic complexity (decisions + 1, catch edges excluded) and loops, with a short explanation. Two new glossary terms cover basic blocks/CFG and cyclomatic complexity.
+- Reports opened from history have no APK, so the tab explains that the app must be analysed again.
+
+Checked on F-Droid: 300 of the app's methods read without failure. The most complex is `LocalHTTPD.serveFile`: 55 blocks, complexity 23, 2 loops, with its `NumberFormatException` and `IOException` handlers on the right blocks. A smali test assembles a method with a loop, a packed switch whose two keys share a target, and a try/catch, and checks every edge.

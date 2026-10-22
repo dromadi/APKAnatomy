@@ -266,7 +266,7 @@ private fun pattern(cls: ClassDef, method: Method): String? {
 }
 
 @Suppress("DEPRECATION")
-private fun renderInstruction(offset: Int, instruction: Instruction): String {
+internal fun renderInstruction(offset: Int, instruction: Instruction): String {
     val registers = when (instruction) {
         is FiveRegisterInstruction -> listOf(instruction.registerC, instruction.registerD, instruction.registerE, instruction.registerF, instruction.registerG).take(instruction.registerCount).joinToString { "v$it" }
         is RegisterRangeInstruction -> "v${instruction.startRegister} .. (${instruction.registerCount} register)"

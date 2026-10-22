@@ -97,6 +97,7 @@ class AnatomyViewModel(application: Application) : AndroidViewModel(application)
     fun clearHistory() = runWork { withContext(Dispatchers.IO) { historyStore.clear() }; refreshHistory() }
     suspend fun preview(entry: ArchiveEntry): FilePreview = repository.preview(entry.archive, entry.path)
     suspend fun resources(): ResourceListing = repository.resources()
+    suspend fun controlFlow(methodId: String): ControlFlow = repository.controlFlow(methodId)
     override fun onCleared() = repository.release()
 
     private suspend fun loadHistory(id: String): AnatomyReport? {

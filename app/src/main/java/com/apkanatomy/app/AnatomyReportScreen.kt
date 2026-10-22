@@ -34,7 +34,8 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (ArchiveEntry) -> FilePreview,
     baseline: AnatomyReport? = null, clearBaseline: () -> Unit = {},
-    loadResources: suspend () -> ResourceListing = { ResourceListing(emptyList(), "Penjelajah resource tidak tersedia di sini.") }) {
+    loadResources: suspend () -> ResourceListing = { ResourceListing(emptyList(), "Penjelajah resource tidak tersedia di sini.") },
+    loadFlow: suspend (String) -> ControlFlow = { ControlFlow(emptyList(), false, "Diagram alur tidak tersedia di sini.") }) {
     var selectedTab by rememberSaveable(report.packageName, report.source) { mutableIntStateOf(0) }
     val tabs = listOf("Ringkasan", "Belajar", "Cari", "Privasi", "Perilaku", "Teknologi", "Komponen", "Izin", "Kemampuan", "Isi APK", "Kode", "Manifest", "DNA", "Kulit", "Jejak") + listOfNotNull(baseline?.let { "Banding" })
     // The Banding tab disappears when the baseline is cleared.
@@ -73,7 +74,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
             "Kemampuan" -> CapabilitiesScreen(report.capabilities)
             "Perilaku" -> BehaviorScreen(report.behaviors, report.code.methods.mapTo(HashSet()) { it.id }, openMethod, remember(report.native) { report.native.importFindings() })
             "Isi APK" -> ArchiveBrowser(report.structure, loadPreview)
-            "Kode" -> CodeExplorer(report.code, pendingMethod, pendingClass, remember(report.components) { report.components.entryTypes() }) { pendingMethod = null; pendingClass = null }
+            "Kode" -> CodeExplorer(report.code, pendingMethod, pendingClass, remember(report.components) { report.components.entryTypes() }, loadFlow) { pendingMethod = null; pendingClass = null }
             "Manifest" -> ManifestScreen(report)
             "DNA" -> DnaScreen(report)
             "Kulit" -> SkinScreen(report, loadResources)

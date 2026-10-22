@@ -142,6 +142,13 @@ class AnatomyRepository(private val context: Context) {
             trackers = trackers, note = note)
     }
 
+    /** The control-flow graph of one indexed method, read again from the current report's DEX. */
+    suspend fun controlFlow(methodId: String): ControlFlow = withContext(Dispatchers.IO) {
+        try { ControlFlowReader.read(archives, methodId) }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { ControlFlow(emptyList(), truncated = false, note = "Alur method ini tidak dapat dibaca.") }
+    }
+
     /** Every resource of the current base APK, for the resource browser. */
     suspend fun resources(): ResourceListing = withContext(Dispatchers.IO) {
         val base = archives["base.apk"] ?: return@withContext ResourceListing(emptyList(), "Arsip tidak lagi tersedia; buka ulang laporannya.")
@@ -156,6 +163,7 @@ class AnatomyRepository(private val context: Context) {
     fun release() {
         archives = emptyMap()
         previewTable = null
+        ControlFlowReader.clear()
         retainedImport?.deleteRecursively()
         retainedImport = null
     }
