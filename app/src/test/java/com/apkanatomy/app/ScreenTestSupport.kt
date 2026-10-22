@@ -75,5 +75,12 @@ internal fun richReport(): AnatomyReport {
         networkSecurity = NetworkSecurityConfig("res/8G.xml", base = NscScope(cleartextPermitted = false, trustAnchors = listOf("system")),
             domains = listOf(NscScope(listOf("*.api.contoh.id"), pins = 2, pinExpiration = "2030-01-01"))),
         resources = ResourceSummary(5120, mapOf("string" to 2100, "drawable" to 800, "layout" to 120), listOf("en", "in", "ms")),
+        traces = TraceCollector().apply {
+            scan("https://api.contoh.id/v2/checkout", "base.apk/classes.dex")
+            scan("http://10.0.2.2:8080/debug", "base.apk/classes2.dex")
+            scan("https://toko-contoh.firebaseio.com", "res: string/firebase_database_url")
+            scan("AI" + "za" + "SyB_contohKunciPalsu_1234567890abcde", "res: string/google_api_key")
+            scan("SB-Mid-" + "server-" + "ContohPalsu1234567890", "base.apk/assets/payment.json")
+        }.result(),
     )
 }

@@ -44,8 +44,9 @@ class AnatomyRepository(private val context: Context) {
         val files = paths.map(::File)
         release()
         archives = files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap()
-        report(info, "Aplikasi terinstal", StructureScanner().scan(files), DexCodeScanner().scan(files, info.packageName) { context.ensureActive() },
-            File(app.sourceDir), scanSigning(File(app.sourceDir), files.drop(1), File(app.sourceDir + ".idsig")))
+        val traces = TraceCollector()
+        report(info, "Aplikasi terinstal", StructureScanner().scan(files), DexCodeScanner().scan(files, info.packageName, traces) { context.ensureActive() },
+            files, scanSigning(File(app.sourceDir), files.drop(1), File(app.sourceDir + ".idsig")), traces)
     }
 
     /** Analyzes a single APK or a split bundle (.apks, .xapk, .apkm) picked through the Storage Access Framework. */
@@ -82,8 +83,9 @@ class AnatomyRepository(private val context: Context) {
             val context = coroutineContext
             val structure = StructureScanner().scan(files).let { it.copy(warnings = bundle?.skipped.orEmpty() + it.warnings) }
             val source = bundle?.let { "${it.format} (${files.size} APK)" } ?: "File APK lokal"
-            report(info, source, structure, DexCodeScanner().scan(files, info.packageName) { context.ensureActive() },
-                base, scanSigning(base, splits, v4Signature = null)).also {
+            val traces = TraceCollector()
+            report(info, source, structure, DexCodeScanner().scan(files, info.packageName, traces) { context.ensureActive() },
+                files, scanSigning(base, splits, v4Signature = null), traces).also {
                 retainedImport = work
                 archives = files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap()
                 kept = true
@@ -109,10 +111,16 @@ class AnatomyRepository(private val context: Context) {
         retainedImport = null
     }
 
-    private fun report(info: PackageInfo, source: String, structure: PackageStructure, code: CodeIndex,
-        baseApk: File, signing: SigningReport): AnatomyReport {
+    /** [files] is the base APK followed by its splits. */
+    private suspend fun report(info: PackageInfo, source: String, structure: PackageStructure, code: CodeIndex,
+        files: List<File>, signing: SigningReport, traces: TraceCollector): AnatomyReport {
+        val baseApk = files.first()
         val (table, tableNote) = ResourceReader.read(baseApk)
         val manifest = ManifestReader.read(baseApk, table)
+        val context = coroutineContext
+        TraceSources.scanResources(table, traces)
+        TraceSources.scanManifest(manifest.application, traces)
+        TraceSources.scanFiles(files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap(), traces) { context.ensureActive() }
         val (networkSecurity, nscNote) = ResourceReader.networkSecurityConfig(baseApk, manifest.application, table)
         val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
         val components = buildList {
@@ -139,7 +147,7 @@ class AnatomyRepository(private val context: Context) {
                 AppPermission(name, protection)
             }, structure, code, manifestXml = manifest.xml, manifestNote = manifest.note,
             signing = signing, security = securityFlags(app, manifest), sdks = detectSdks(code.packages, structure.libraryVersions),
-            iconPng = iconPng(app), networkSecurity = networkSecurity,
+            iconPng = iconPng(app), networkSecurity = networkSecurity, traces = traces.result(),
             resources = (table?.let { ResourceSummary(it.resourceCount, it.typeCounts().entries.sortedByDescending { e -> e.value }.associate { e -> e.key to e.value }, it.locales().toList(), nscNote) }
                 ?: tableNote?.let { ResourceSummary(0, emptyMap(), emptyList(), listOfNotNull(it, nscNote).joinToString(" ")) }))
     }

@@ -62,6 +62,11 @@ fun compareReports(old: AnatomyReport, new: AnatomyReport, now: Long): List<Diff
         (ov.keys intersect nv.keys).sorted().mapNotNullTo(this) { changed(it, ov[it], nv[it]) }
         addAll(setDiff(ov.keys, nv.keys, { it }))
     }),
+    DiffSection("Jejak", buildList {
+        addAll(setDiff(old.traces.hosts.map { it.host }, new.traces.hosts.map { it.host }, { "Host $it" }))
+        addAll(setDiff(old.traces.secrets.map { "${it.type} ${it.masked}" }, new.traces.secrets.map { "${it.type} ${it.masked}" }, { it },
+            attention = { s -> new.traces.secrets.any { "${it.type} ${it.masked}" == s && it.level == NoteLevel.PERHATIAN } }))
+    }),
     DiffSection("Kulit & ukuran", buildList {
         val os = sizeBreakdown(old.structure.entries).associateBy { it.category }
         val ns = sizeBreakdown(new.structure.entries).associateBy { it.category }

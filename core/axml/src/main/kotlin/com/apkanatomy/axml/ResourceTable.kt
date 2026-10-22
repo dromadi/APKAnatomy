@@ -36,6 +36,10 @@ class ResourceTable private constructor(
     /** Every configuration's value, e.g. ("", "Hello") and ("in", "Halo"). */
     fun values(id: Int): List<Pair<String, String>> = entries[id].orEmpty().map { it.config to it.format() }
 
+    /** Every string value in every configuration, as ("type/name", value). */
+    fun stringValues(): Sequence<Pair<String, String>> = entries.values.asSequence().flatten()
+        .filter { it.dataType == TYPE_STRING }.mapNotNull { e -> globalStrings.getOrNull(e.data)?.let { e.name to it } }
+
     /** Resource IDs per type name, e.g. "string" to 120. */
     fun typeCounts(): Map<String, Int> = entries.values.groupingBy { it.first().name.substringBefore('/') }.eachCount()
 

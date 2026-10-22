@@ -24,6 +24,7 @@ class ResourceTableTest {
         assertEquals(setOf("in"), table.locales())
         assertEquals(22, table.typeCounts()["string"])
         assertNull(table.name(0x7f060099))
+        assertTrue(("string/greeting" to "Hello & welcome") in table.stringValues().toList())
     }
 
     @Test fun readsDenseTables() = check(table("dense"))

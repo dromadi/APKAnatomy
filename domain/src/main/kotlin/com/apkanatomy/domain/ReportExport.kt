@@ -53,6 +53,12 @@ fun AnatomyReport.toMarkdown(now: Long): String = buildString {
     appendLine()
     appendLine("DEX: ${structure.dex.size} file · library native: ${structure.libraries.map { it.abi }.distinct().joinToString().ifEmpty { "tidak ada" }}")
     appendLine()
+    appendLine("## Jejak")
+    appendLine("${traces.hosts.size} host, ${traces.secrets.size} kandidat kunci/token (nilai tersamar).")
+    appendLine()
+    traces.secrets.forEach { appendLine("- **${it.level.name}** ${md(it.type)} `${md(it.masked)}` · ${md(it.locations.joinToString())}") }
+    traces.hosts.forEach { appendLine("- ${md(it.host)}" + (it.service?.let { s -> " (${md(s)})" } ?: "") + (if (it.cleartext) " · http" else "") + (if (it.local) " · lokal" else "")) }
+    appendLine()
     appendLine("## Kulit: ukuran")
     appendLine("| Kategori | File | Ukuran | Di ZIP |")
     appendLine("|---|---|---|---|")
@@ -110,6 +116,10 @@ fun AnatomyReport.toJson(now: Long): String = json(mapOf(
     "technologies" to structure.technologies.map { it.name },
     "sdks" to sdks.map { mapOf("name" to it.name, "category" to it.category, "versions" to it.versions, "evidence" to it.evidence) },
     "libraryVersions" to structure.libraryVersions,
+    "traces" to mapOf(
+        "hosts" to traces.hosts.map { mapOf("host" to it.host, "service" to it.service, "cleartext" to it.cleartext, "local" to it.local,
+            "examples" to it.examples, "locations" to it.locations, "count" to it.count) },
+        "secrets" to traces.secrets.map { mapOf("type" to it.type, "level" to it.level.name, "masked" to it.masked, "locations" to it.locations) }),
     "sizes" to sizeBreakdown(structure.entries).map { mapOf("category" to it.category.name, "files" to it.files, "size" to it.size, "compressedSize" to it.compressedSize) },
     "warnings" to (structure.warnings + signing.warnings + code.warnings + listOfNotNull(manifestNote)).distinct(),
 ))

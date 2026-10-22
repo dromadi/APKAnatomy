@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (ArchiveEntry) -> FilePreview,
     baseline: AnatomyReport? = null, clearBaseline: () -> Unit = {}) {
     var selectedTab by rememberSaveable(report.packageName, report.source) { mutableIntStateOf(0) }
-    val tabs = listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Isi APK", "Kode", "Manifest", "DNA", "Kulit") + listOfNotNull(baseline?.let { "Banding" })
+    val tabs = listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Isi APK", "Kode", "Manifest", "DNA", "Kulit", "Jejak") + listOfNotNull(baseline?.let { "Banding" })
     // The Banding tab disappears when the baseline is cleared.
     val tab = selectedTab.coerceAtMost(tabs.lastIndex)
     Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -51,42 +51,47 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
         }
     }
     key(report.packageName, report.source) {
-        when (tab) {
-            0 -> Overview(report) { selectedTab = it }
-            1 -> TechnologyScreen(report)
-            2 -> ComponentsScreen(report)
-            3 -> PermissionsScreen(report)
-            4 -> ArchiveBrowser(report.structure, loadPreview)
-            5 -> CodeExplorer(report.code)
-            6 -> ManifestScreen(report)
-            7 -> DnaScreen(report)
-            8 -> SkinScreen(report)
-            9 -> baseline?.let { CompareScreen(it, report, clearBaseline) }
+        when (tabs[tab]) {
+            "Ringkasan" -> Overview(report) { name -> selectedTab = tabs.indexOf(name).coerceAtLeast(0) }
+            "Teknologi" -> TechnologyScreen(report)
+            "Komponen" -> ComponentsScreen(report)
+            "Izin" -> PermissionsScreen(report)
+            "Isi APK" -> ArchiveBrowser(report.structure, loadPreview)
+            "Kode" -> CodeExplorer(report.code)
+            "Manifest" -> ManifestScreen(report)
+            "DNA" -> DnaScreen(report)
+            "Kulit" -> SkinScreen(report)
+            "Jejak" -> TracesScreen(report.traces)
+            "Banding" -> baseline?.let { CompareScreen(it, report, clearBaseline) }
         }
     }
 }
 
 @Composable
-private fun Overview(report: AnatomyReport, open: (Int) -> Unit) {
+private fun Overview(report: AnatomyReport, open: (String) -> Unit) {
     val s = report.structure
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item { LessonCard("Mulai membedah", "Kenali teknologinya, jelajahi komponen, lalu telusuri file yang menyusunnya. Hasil ini berasal dari analisis statis paket; alur eksekusi belum direkam.") }
         item { LessonCard("Teknologi", s.technologies.joinToString { it.name }.ifEmpty { "Belum ada penanda framework yang dikenali. Ini tidak otomatis berarti aplikasi pure native." } +
-            "\n${report.sdks.size} SDK/library dikenali" + (report.sdks.takeIf { it.isNotEmpty() }?.joinToString(prefix = ": ") { it.name }?.take(160) ?: "."), onClick = { open(1) }) }
-        item { LessonCard("Kerangka", "${report.components.size} komponen · ${report.permissions.size} izin yang diminta · ${report.components.openToAllApps().size} exported tanpa izin · ${report.components.sumOf { c -> c.intentFilters.count { it.isDeepLink } }} deep link · ${report.permissions.count { sensitivePermissionLesson(it.name) != null }} izin sensitif. Pelajari titik masuk layar, kerja tanpa layar, broadcast, dan akses data.", onClick = { open(2) }) }
+            "\n${report.sdks.size} SDK/library dikenali" + (report.sdks.takeIf { it.isNotEmpty() }?.joinToString(prefix = ": ") { it.name }?.take(160) ?: "."), onClick = { open("Teknologi") }) }
+        item { LessonCard("Kerangka", "${report.components.size} komponen · ${report.permissions.size} izin yang diminta · ${report.components.openToAllApps().size} exported tanpa izin · ${report.components.sumOf { c -> c.intentFilters.count { it.isDeepLink } }} deep link · ${report.permissions.count { sensitivePermissionLesson(it.name) != null }} izin sensitif. Pelajari titik masuk layar, kerja tanpa layar, broadcast, dan akses data.", onClick = { open("Komponen") }) }
         item {
             val attention = remember(report) { report.notes(System.currentTimeMillis()).count { it.level == NoteLevel.PERHATIAN } }
             LessonCard("DNA & keamanan", "Skema tanda tangan: ${report.signing.schemes.joinToString { it.label }.ifEmpty { "tidak ditemukan" }} · " +
-                "${report.signing.certificates.size} sertifikat · $attention catatan perlu perhatian. Pelajari siapa penandatangannya dan flag keamanan manifest.", onClick = { open(7) })
+                "${report.signing.certificates.size} sertifikat · $attention catatan perlu perhatian. Pelajari siapa penandatangannya dan flag keamanan manifest.", onClick = { open("DNA") })
         }
-        item { LessonCard("Manifest", report.manifestXml?.let { "${it.lines().size} baris XML hasil dekode AndroidManifest.xml biner. Lihat deklarasi lengkap, termasuk intent-filter dan meta-data." } ?: (report.manifestNote ?: "Manifest tidak tersedia."), onClick = { open(6) }) }
+        item {
+            val t = report.traces
+            LessonCard("Jejak", "${t.hosts.size} host/endpoint · ${t.secrets.size} kandidat kunci atau token (${t.secrets.count { it.level == NoteLevel.PERHATIAN }} perlu perhatian). Lihat server yang dihubungi dan string yang mirip rahasia.", onClick = { open("Jejak") })
+        }
+        item { LessonCard("Manifest", report.manifestXml?.let { "${it.lines().size} baris XML hasil dekode AndroidManifest.xml biner. Lihat deklarasi lengkap, termasuk intent-filter dan meta-data." } ?: (report.manifestNote ?: "Manifest tidak tersedia."), onClick = { open("Manifest") }) }
         item {
             val largest = remember(s) { sizeBreakdown(s.entries).firstOrNull() }
             LessonCard("Kulit & ukuran", (largest?.let { "Bagian terbesar: ${it.category.label} (${formatSize(it.size)}). " } ?: "") +
-                "Lihat proporsi ukuran, font, model ML, web bundle, dan file menarik lain.", onClick = { open(8) })
+                "Lihat proporsi ukuran, font, model ML, web bundle, dan file menarik lain.", onClick = { open("Kulit") })
         }
-        item { LessonCard("Organ & isi paket", "${s.archives.size} arsip · ${s.entries.size} file · ${s.dex.size} DEX · ${s.libraries.size} library native. Ukuran isi terdaftar: ${formatSize(s.entries.filter { it.size >= 0 }.sumOf { it.size })} sebelum kompresi.", onClick = { open(4) }) }
-        item { LessonCard("Telusuri kode", "${report.code.classes.size} class · ${report.code.methods.size} method terdefinisi · ${report.code.calls.size} pemanggilan langsung terbaca. Cari nama, buka instruksi, dan gunakan Find usage.", onClick = { open(5) }) }
+        item { LessonCard("Organ & isi paket", "${s.archives.size} arsip · ${s.entries.size} file · ${s.dex.size} DEX · ${s.libraries.size} library native. Ukuran isi terdaftar: ${formatSize(s.entries.filter { it.size >= 0 }.sumOf { it.size })} sebelum kompresi.", onClick = { open("Isi APK") }) }
+        item { LessonCard("Telusuri kode", "${report.code.classes.size} class · ${report.code.methods.size} method terdefinisi · ${report.code.calls.size} pemanggilan langsung terbaca. Cari nama, buka instruksi, dan gunakan Find usage.", onClick = { open("Kode") }) }
         item { LessonCard("Panduan penelusuran", "Mulai dari nama komponen atau library yang dikenali. Catat file buktinya, kemudian gunakan tab Kode untuk menelusuri method dan pemanggilan langsung. Nama file saja belum menjelaskan fungsi atau hubungan antarbagian.") }
         items(s.warnings) { LessonCard("Hasil sebagian", it) }
     }
@@ -351,6 +356,32 @@ private fun CompareScreen(old: AnatomyReport, new: AnatomyReport, clearBaseline:
                     color = if (change.attention) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
             }
         }
+    }
+}
+
+@Composable
+private fun TracesScreen(traces: TraceReport) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+        item {
+            LessonCard("Pelajari jejak", "String di DEX, resource, meta-data manifest, dan file assets/res/raw dipindai untuk alamat server dan string yang mirip kunci atau token. " +
+                "Ini petunjuk, bukan bukti: alamat bisa milik library, dan kunci bisa saja tidak aktif atau memang publik. Nilai rahasia hanya ditampilkan tersamar. ${traces.scannedStrings} string dipindai.")
+        }
+        item { Text("Kandidat kunci & token (${traces.secrets.size})", style = MaterialTheme.typography.titleMedium) }
+        if (traces.secrets.isEmpty()) item { Text("Tidak ada string yang cocok dengan pola kunci atau token yang dikenali.") }
+        items(traces.secrets) { secret ->
+            NoteCard(SecurityNote(secret.level, "${secret.type}: ${secret.masked}", secret.lesson + "\nDitemukan di: " + secret.locations.joinToString()))
+        }
+        item { Text("Host & endpoint (${traces.hosts.size})", style = MaterialTheme.typography.titleMedium) }
+        if (traces.hosts.isEmpty()) item { Text("Tidak ada URL yang ditemukan.") }
+        items(traces.hosts, key = { "host:${it.host}" }) { host ->
+            LessonCard(host.host + (host.service?.let { " · $it" } ?: ""), buildString {
+                if (host.local) append("Alamat lokal/jaringan pengembangan; sering sisa saat development.\n")
+                if (host.cleartext) append("Ada URL http:// atau ws:// tanpa enkripsi.\n")
+                append("${host.count} kemunculan. Contoh: ").append(host.examples.joinToString())
+                append("\nDitemukan di: ").append(host.locations.joinToString())
+            })
+        }
+        items(traces.notes) { LessonCard("Hasil sebagian", it) }
     }
 }
 

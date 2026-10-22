@@ -19,7 +19,8 @@ internal data class CodeLimits(val dexBytes: Long = 16L * 1024 * 1024,
 @Suppress("DEPRECATION")
 internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
     init { require(limits.dexBytes > 0 && limits.totalBytes > 0 && limits.classes > 0 && limits.methods > 0 && limits.visitedInstructions > 0 && limits.displayedInstructions > 0 && limits.calls > 0) }
-    fun scan(files: List<File>, preferredPackage: String? = null, checkCancelled: () -> Unit = {}): CodeIndex {
+    /** @param traces receives every string of every DEX read, for endpoint and secret detection. */
+    fun scan(files: List<File>, preferredPackage: String? = null, traces: TraceCollector? = null, checkCancelled: () -> Unit = {}): CodeIndex {
         val classes = mutableListOf<CodeClass>()
         val methods = mutableListOf<CodeMethod>()
         val calls = mutableListOf<MethodCall>()
@@ -62,6 +63,10 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                                 packages.add(name.substringBeforeLast('/', "").replace('/', '.'))
                                 definedClasses++
                                 if (name.substringAfterLast('/').substringBefore('$').length <= 2) shortNamed++
+                            }
+                            if (traces != null) dex.stringSection.forEachIndexed { i, s ->
+                                if (i % 4096 == 0) checkCancelled()
+                                traces.scan(s, "$archive/${entry.name}")
                             }
                             if (indexFull) continue
                             val prefix = preferredPackage?.takeIf { it.isNotBlank() }?.replace('.', '/')?.let { "L$it/" }

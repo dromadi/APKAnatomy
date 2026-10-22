@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.13
+# APKAnatomy 0.1.0-alpha.14
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -169,3 +169,15 @@ No emulator is needed to see the app run: `:app:testDebugUnitTest` uses Robolect
 Screenshots are written to `app/build/outputs/roborazzi/` on every run (record mode, no golden comparison) and uploaded by CI with the other reports, so a change's look can be checked from the artifact. Reviewing them led to two fixes: the preview dialog was too short to read code (now up to 560 dp tall), and a missing versionName is shown as "versi tidak tercantum" instead of "v—".
 
 Robolectric fetches `android-all-instrumented` from Maven Central at test time (cached in `~/.m2`); environments that cannot reach Maven Central need that jar pre-seeded. Robolectric is not a device: rendering, package-manager behaviour and permissions are emulated, so the device smoke tests below still matter, especially for icons (Robolectric supplies blank ones) and the file pickers.
+
+## Alpha.14: Jejak (endpoints and secret candidates)
+
+A new Jejak tab lists the hosts an app's strings point to and strings shaped like keys or tokens. Sources: every DEX string (fed while the DEX is loaded for the code index, including DEX files read after the index is full), every string value in resources.arsc, manifest meta-data values, and files under assets/ and res/raw/ read as Latin-1 so binary bundles still yield ASCII strings (media, fonts and archives skipped; 8 MiB per file, 32 MiB total).
+
+URLs are grouped by host and stored without query, fragment or credentials, so a key in a query string never reaches the report. Known services (Firebase, Google APIs, ad and analytics networks, AWS, payment gateways) are named, local and development addresses and http:// or ws:// use are marked, and XML namespaces and RFC 2606 placeholder domains are ignored. About fifteen patterns recognise client keys that are normally embedded (Google API keys, OAuth client IDs, Stripe publishable and Midtrans client keys: INFO, with advice to restrict them) and server-side credentials that should never ship (AWS access keys, Stripe secret keys, Slack and GitHub tokens, SendGrid, Mapbox secret, Midtrans server keys, webhooks, private keys: PERHATIAN, also raised as an audit note). Only masked values are stored, shown or exported; matches are hints (a key can be inactive, restricted or a test value). Hosts and secrets are part of exports and the Banding diff.
+
+Every regex runs only after a cheap substring check, and strings shorter than ten characters or shaped like type descriptors are skipped. On the F-Droid client 161,210 strings are scanned in about 0.6 s on a warm JVM (59 hosts, no secret candidates). An earlier one-letter prefilter made the AWS pattern run on nearly every string; the specific prefixes made the whole scan four times faster.
+
+Test sources never contain a complete secret-shaped literal: fake keys are concatenated at runtime so secret scanners do not flag the repository.
+
+Smoke test: open Jejak for a large app with analytics or payments and check hosts, services and masked values; confirm exports never contain an unmasked key.
