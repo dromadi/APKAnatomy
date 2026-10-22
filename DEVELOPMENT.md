@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.38
+# APKAnatomy 0.1.0-alpha.39
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -407,3 +407,15 @@ The code scanner now records the literal constants each method loads (`const*` i
 - **Memakai penyimpanan bersama** (INFO): `Environment.getExternalStorageDirectory/getExternalStoragePublicDirectory`.
 
 A planned rule for dynamically registered receivers without an export flag was dropped: `registerReceiver(…, flags)` overloads cannot be told apart from the flags alone without data-flow analysis. Checked on F-Droid: the mutable PendingIntents found are in `SessionInstallManager` (PackageInstaller needs a mutable sender) and AppCompat's `SearchView`, both correct.
+
+## Alpha.39: changes on the phone since the last audit
+
+A finished audit is now kept on the device (`AuditStore`, `filesDir/audit/last.audit.gz`). It is written field by field with `DataOutputStream`, with no Java serialization, so reading never creates objects from the file. Changing a model class therefore does not invalidate it. A truncated or foreign file is deleted. The Audit tab shows the last result straight away, with its date, without scanning again.
+
+When an audit finishes, it is compared with the one before (`auditChanges`, domain):
+
+- **Baru dipasang**: version, install source, data access and trackers.
+- **Dihapus**.
+- **Diperbarui / Berubah**: version, targetSdk, permissions added or dropped, new data categories, trackers added or gone, now debuggable, a different install source.
+
+New data access, new trackers, debuggable and a changed install source are marked "perlu dilihat" and listed first. System apps are compared only when both audits included them, so ticking or unticking the checkbox does not make them appear installed or removed. Trackers are compared only when the code of both versions was readable. The card lists 8 changes with "Tampilkan semua". Tapping a change opens the full analysis, except for removed apps.

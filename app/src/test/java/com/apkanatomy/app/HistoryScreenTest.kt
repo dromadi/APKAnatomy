@@ -14,7 +14,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import com.apkanatomy.data.HistoryStore
+import com.apkanatomy.domain.AuditSnapshot
 import com.apkanatomy.domain.FilePreview
+import com.apkanatomy.domain.auditChanges
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -92,6 +94,26 @@ class HistoryScreenTest {
         compose.onNodeWithText("Catatan").assertDoesNotExist()
         compose.onNodeWithText("Toko Contoh").performClick()
         assertEquals("id.toko", opened)
+    }
+
+    @Test fun auditShowsChangesSinceTheLastAudit() {
+        val old = com.apkanatomy.domain.AppAudit("id.toko", "Toko Contoh", false, "4.2.0", 34, false, false, false, "com.android.vending",
+            listOf("android.permission.INTERNET"), 1, emptyList())
+        val apps = listOf(old.copy(versionName = "4.3.0", permissions = old.permissions + "android.permission.ACCESS_FINE_LOCATION",
+            trackers = listOf("Google AdMob" to "Iklan")),
+            com.apkanatomy.domain.AppAudit("org.baru", "Senter", false, "1.0", 35, false, false, false, "com.android.vending", emptyList(), 1, emptyList()))
+        val diff = auditChanges(AuditSnapshot(0, false, listOf(old, old.copy(packageName = "id.lama", label = "Lama"))), AuditSnapshot(1, false, apps))
+        var opened: String? = null
+        screen { AuditScreen(apps, null, busy = false, start = {}, cancel = {}, inspect = { opened = it }, savedAt = 1, diff = diff) }
+        compose.onNodeWithText("Perubahan sejak", substring = true).assertExists()
+        compose.onNodeWithText("1 baru dipasang, 1 diperbarui, 1 dihapus · 1 perlu dilihat").assertExists()
+        compose.onNodeWithText("⚠ Toko Contoh · diperbarui").assertExists()
+        compose.onNodeWithText("• Pelacak baru: Google AdMob").assertExists()
+        compose.shot("audit_changes")
+        compose.onNodeWithText("Lama · dihapus").performClick()
+        assertEquals(null, opened)
+        compose.onNodeWithText("Senter · baru dipasang").performClick()
+        assertEquals("org.baru", opened)
     }
 
     @Test fun auditShowsProgressWithCancel() {

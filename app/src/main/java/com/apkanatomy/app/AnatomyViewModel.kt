@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.apkanatomy.data.AnatomyRepository
+import com.apkanatomy.data.AuditStore
 import com.apkanatomy.data.HistoryEntry
 import com.apkanatomy.data.HistoryStore
 import com.apkanatomy.domain.*
@@ -33,10 +34,15 @@ data class UiState(val apps: List<AppEntry> = emptyList(), val report: AnatomyRe
     /** Results of the last audit of all installed apps; null before the first one. */
     val audit: List<AppAudit>? = null,
     /** (done, total, current app) while an audit runs. */
-    val auditProgress: Triple<Int, Int, String>? = null)
+    val auditProgress: Triple<Int, Int, String>? = null,
+    /** When the shown audit was taken; it may come from an earlier session. */
+    val auditSavedAt: Long? = null,
+    /** Changes against the audit before the shown one; null when there was none to compare. */
+    val auditDiff: AuditDiff? = null)
 class AnatomyViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = AnatomyRepository(application)
     private val historyStore = HistoryStore(File(application.filesDir, "history"))
+    private val auditStore = AuditStore(File(application.filesDir, "audit"))
     private val mutable = MutableStateFlow(UiState())
     val state = mutable.asStateFlow()
     private var work: Job? = null
@@ -45,6 +51,10 @@ class AnatomyViewModel(application: Application) : AndroidViewModel(application)
         val apps = repository.installed()
         val history = withContext(Dispatchers.IO) { historyStore.list() }
         mutable.update { it.copy(apps = apps, history = history) }
+        if (mutable.value.audit == null) {
+            val last = withContext(Dispatchers.IO) { auditStore.load() }
+            if (last != null) mutable.update { it.copy(audit = last.apps, auditSavedAt = last.savedAt) }
+        }
     }
     fun inspect(packageName: String) = analyze { repository.analyzeInstalled(packageName, it) }
     fun inspect(uri: Uri) = analyze { repository.analyzeFile(uri, it) }
@@ -54,7 +64,13 @@ class AnatomyViewModel(application: Application) : AndroidViewModel(application)
         try {
             mutable.update { it.copy(auditProgress = Triple(0, 0, "")) }
             val results = repository.audit(includeSystem) { done, total, label -> mutable.update { it.copy(auditProgress = Triple(done, total, label)) } }
-            mutable.update { it.copy(audit = results) }
+            val snapshot = AuditSnapshot(System.currentTimeMillis(), includeSystem, results)
+            val diff = withContext(Dispatchers.IO) {
+                val previous = auditStore.load()
+                try { auditStore.save(snapshot) } catch (_: IOException) { }
+                previous?.let { auditChanges(it, snapshot) }
+            }
+            mutable.update { it.copy(audit = results, auditSavedAt = snapshot.savedAt, auditDiff = diff) }
         } catch (cancelled: CancellationException) {
             mutable.update { it.copy(info = "Audit dibatalkan.") }
             throw cancelled

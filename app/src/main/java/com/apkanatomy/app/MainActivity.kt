@@ -83,7 +83,7 @@ private fun AnatomyApp(model: AnatomyViewModel) {
                 }
                 when (section) {
                     1 -> HistoryList(state.history, state.busy, model::openHistory, model::baselineFromHistory, model::deleteHistory, model::clearHistory)
-                    2 -> AuditScreen(state.audit, state.auditProgress, state.busy, model::audit, model::cancel, model::inspect)
+                    2 -> AuditScreen(state.audit, state.auditProgress, state.busy, model::audit, model::cancel, model::inspect, state.auditSavedAt, state.auditDiff)
                     3 -> GlossaryScreen()
                     else -> AppList(state.apps, state.busy, model::inspect)
                 }
@@ -136,7 +136,8 @@ internal fun HistoryList(history: List<HistoryEntry>, busy: Boolean, open: (Stri
 /** Audit of all installed apps: a ranked list of what stands out, with filters; tap an app for the full analysis. */
 @Composable
 internal fun AuditScreen(results: List<AppAudit>?, progress: Triple<Int, Int, String>?, busy: Boolean,
-    start: (Boolean) -> Unit, cancel: () -> Unit, inspect: (String) -> Unit) {
+    start: (Boolean) -> Unit, cancel: () -> Unit, inspect: (String) -> Unit, savedAt: Long? = null, diff: AuditDiff? = null) {
+    val format = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
     var includeSystem by rememberSaveable { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf<String?>(null) }
     val ranked = remember(results) { results.orEmpty().map { it to it.reasons() }.sortedByDescending { (_, r) -> r.sumOf { it.points } } }
@@ -164,11 +165,13 @@ internal fun AuditScreen(results: List<AppAudit>?, progress: Triple<Int, Int, St
         if (results != null) {
             item {
                 Text("${results.size} aplikasi diperiksa", style = MaterialTheme.typography.titleMedium)
+                savedAt?.let { Text("Audit ${format.format(java.util.Date(it))}", style = MaterialTheme.typography.labelSmall) }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = filter == null, onClick = { filter = null }, label = { Text("Semua") })
                     summary.forEach { (name, count) -> FilterChip(selected = filter == name, onClick = { filter = name }, enabled = count > 0, label = { Text("$name ($count)") }) }
                 }
             }
+            if (diff != null) item { AuditChanges(diff, format, busy, inspect) }
             if (shown.isEmpty()) item { Text("Tidak ada aplikasi yang cocok.") }
             items(shown, key = { it.first.packageName }) { (app, reasons) ->
                 Card(Modifier.fillMaxWidth().clickable(enabled = !busy) { inspect(app.packageName) }) {
@@ -187,6 +190,30 @@ internal fun AuditScreen(results: List<AppAudit>?, progress: Triple<Int, Int, St
                     }
                 }
             }
+        }
+    }
+}
+
+/** Apps installed, removed or changed since the audit before; changes worth a look come first and are marked. */
+@Composable
+private fun AuditChanges(diff: AuditDiff, format: java.text.DateFormat, busy: Boolean, inspect: (String) -> Unit) {
+    var all by rememberSaveable { mutableStateOf(false) }
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Perubahan sejak ${format.format(java.util.Date(diff.since))}", style = MaterialTheme.typography.titleMedium)
+            if (diff.changes.isEmpty()) Text("Tidak ada aplikasi yang dipasang, dihapus, atau berubah.", style = MaterialTheme.typography.bodySmall)
+            else Text(listOf(CHANGE_NEW, CHANGE_UPDATED, CHANGE_CHANGED, CHANGE_REMOVED).mapNotNull { k -> diff.changes.count { it.kind == k }.takeIf { it > 0 }?.let { "$it ${k.lowercase()}" } }
+                .joinToString() + diff.changes.count { it.attention }.takeIf { it > 0 }?.let { " · $it perlu dilihat" }.orEmpty(), style = MaterialTheme.typography.bodySmall)
+            val visible = if (all) diff.changes else diff.changes.take(8)
+            visible.forEach { change ->
+                val open = change.kind != CHANGE_REMOVED && !busy
+                Column(Modifier.fillMaxWidth().clickable(enabled = open) { inspect(change.packageName) }.padding(vertical = 4.dp)) {
+                    Text((if (change.attention) "⚠ " else "") + "${change.label} · ${change.kind.lowercase()}", style = MaterialTheme.typography.titleSmall,
+                        color = if (change.attention) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSecondaryContainer)
+                    change.details.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+            if (diff.changes.size > 8) TextButton(onClick = { all = !all }) { Text(if (all) "Ringkas" else "Tampilkan semua (${diff.changes.size})") }
         }
     }
 }
