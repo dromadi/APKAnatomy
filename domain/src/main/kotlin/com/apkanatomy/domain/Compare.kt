@@ -75,6 +75,8 @@ fun compareReports(old: AnatomyReport, new: AnatomyReport, now: Long): List<Diff
             attention = { it.endsWith("location") || it.endsWith("camera") || it.endsWith("microphone") || it.endsWith("mediaProjection") }))
         addAll(setDiff(old.capabilities.queries.packages, new.capabilities.queries.packages, { "Query package $it" }))
     }),
+    DiffSection("Perilaku", setDiff(old.behaviors.findings.map { it.title }, new.behaviors.findings.map { it.title }, { "Perilaku: $it" },
+        attention = { t -> new.behaviors.findings.any { it.title == t && it.level == NoteLevel.PERHATIAN } })),
     DiffSection("Jejak", buildList {
         addAll(setDiff(old.traces.hosts.map { it.host }, new.traces.hosts.map { it.host }, { "Host $it" }))
         addAll(setDiff(old.traces.secrets.map { "${it.type} ${it.masked}" }, new.traces.secrets.map { "${it.type} ${it.masked}" }, { it },

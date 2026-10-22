@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.19
+# APKAnatomy 0.1.0-alpha.20
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -230,3 +230,15 @@ Every finished analysis is saved automatically to an on-device history (app-priv
 - Analyses report seven steps (`ANALYSIS_STEPS`), shown as "Langkah n/7" with a determinate bar and a Batal button. Cancelling stops at the next check: between steps, inside the DEX, asset and native scans, and about once per MiB while copying a picked file. An import folder of a cancelled analysis is deleted.
 
 `HistoryScreenTest` round-trips the full sample report through the store, which fails if any class reachable from `AnatomyReport` is not serializable.
+
+## Alpha.20: Perilaku (behaviours in code)
+
+A Perilaku tab, right after Privasi, shows what the code calls rather than what the manifest allows. Every DEX instruction read (the index plus the extra pass from alpha.18, now always run) is checked against about 40 sensitive APIs in eight groups: secure connections (TLS), WebView, cryptography, private data, location/camera/microphone, device identity, dynamic code and app protection.
+
+- Call rules match the invoked type and method name. Some also need a string loaded by the same method: `Settings.Secure.getString` only counts with `"android_id"`, `Cipher.getInstance` counts as ECB only for `"AES/ECB..."` or a bare `"AES"` without any `"AES/..."` transformation (so `RSA/ECB/PKCS1Padding` and an `"AES"` key spec next to `AES/GCM` do not match), and content-provider queries only for SMS, contacts or call log URIs.
+- Whole-method patterns: an `X509TrustManager.checkServerTrusted` that only returns, and a `HostnameVerifier.verify` that only returns true. These and `SslErrorHandler.proceed()`, file-URL access in WebView, ECB/DES and sending SMS are PERHATIAN and also appear as DNA notes.
+- Positive signals (Android Keystore, certificate pinning, Play Integrity) are marked BAIK.
+- Each finding shows the APIs, how many call sites there are and how many sit in the app's own package, and up to five example methods (the app's own first). Indexed ones open in the Kode tab.
+- Included in the overview, Markdown/JSON export and Banding (new PERHATIAN behaviours are flagged).
+
+On the F-Droid client the scan reads 1.9 M instructions (about 2 s warm for the whole DEX step). It finds, among others, `getInstalledPackages` in its own nearby-swap code, `TelephonyManager.getDeviceId` in ACRA, zxing opening the camera, and shell commands in `FileCompat`. A first version flagged `RSA/ECB/PKCS1Padding` in the bundled zipsigner as ECB, which led to the string rule above.

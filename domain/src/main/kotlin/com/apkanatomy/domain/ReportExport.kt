@@ -66,6 +66,13 @@ fun AnatomyReport.toMarkdown(now: Long): String = buildString {
     if (!capabilities.queries.isEmpty) appendLine("- Queries: ${(capabilities.queries.packages + capabilities.queries.intents + capabilities.queries.providers).joinToString { md(it) }}")
     capabilities.backupRules.forEach { appendLine("- Backup ${it.section}: ${if (it.include) "sertakan" else "kecualikan"} ${it.domain}/${md(it.path)}") }
     appendLine()
+    appendLine("## Perilaku")
+    if (behaviors.findings.isEmpty()) appendLine("Tidak ada pemanggilan API sensitif yang dikenali.")
+    behaviors.findings.forEach { f ->
+        appendLine("- **${f.level.name}** ${md(f.category)}: ${md(f.title)} · ${f.count} tempat (${f.inAppPackage} di package aplikasi) · ${md(f.apis.joinToString())}" +
+            (f.usedBy.firstOrNull()?.let { " · mis. `${md(prettyMethod(it))}`" } ?: ""))
+    }
+    appendLine()
     appendLine("## Library native")
     native.pageSizeNote()?.let { appendLine("**${it.level.name}** ${md(it.title)}: ${md(it.explanation)}") }
     native.libraries.forEach { lib ->
@@ -153,6 +160,8 @@ fun AnatomyReport.toJson(now: Long): String = json(mapOf(
         "libraries" to native.libraries.map { mapOf("archive" to it.archive, "path" to it.path, "abi" to it.abi, "machine" to it.machine, "bits" to it.bits,
             "minLoadAlign" to it.minLoadAlign, "stored" to it.stored, "zipDataOffset" to it.zipDataOffset, "soname" to it.soname, "needed" to it.needed,
             "jniMethods" to it.jniMethods, "jniOnLoad" to it.hasJniOnLoad, "symbolTable" to it.hasSymbolTable, "debugInfo" to it.hasDebugInfo) }),
+    "behaviors" to behaviors.findings.map { mapOf("id" to it.id, "category" to it.category, "title" to it.title, "level" to it.level.name,
+        "apis" to it.apis, "count" to it.count, "inAppPackage" to it.inAppPackage, "examples" to it.usedBy.map(::prettyMethod)) },
     "traces" to mapOf(
         "hosts" to traces.hosts.map { mapOf("host" to it.host, "service" to it.service, "cleartext" to it.cleartext, "local" to it.local,
             "examples" to it.examples, "locations" to it.locations, "count" to it.count) },

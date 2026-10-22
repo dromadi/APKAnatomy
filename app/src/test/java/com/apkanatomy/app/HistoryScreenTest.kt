@@ -69,7 +69,7 @@ class HistoryScreenTest {
     @Test fun progressShowsTheStepAndCancels() {
         var cancelled = false
         screen { AnalysisProgress(2) { cancelled = true } }
-        compose.onNodeWithText("Langkah 3/7: Mengindeks kode DEX & string…").assertExists()
+        compose.onNodeWithText("Langkah 3/7: Mengindeks kode, string & perilaku…").assertExists()
         compose.onNodeWithText("Batal").performClick()
         assertTrue(cancelled)
         compose.shot("analysis_progress")

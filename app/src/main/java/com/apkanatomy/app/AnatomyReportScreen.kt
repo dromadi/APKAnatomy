@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
 internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (ArchiveEntry) -> FilePreview,
     baseline: AnatomyReport? = null, clearBaseline: () -> Unit = {}) {
     var selectedTab by rememberSaveable(report.packageName, report.source) { mutableIntStateOf(0) }
-    val tabs = listOf("Ringkasan", "Privasi", "Teknologi", "Komponen", "Izin", "Kemampuan", "Isi APK", "Kode", "Manifest", "DNA", "Kulit", "Jejak") + listOfNotNull(baseline?.let { "Banding" })
+    val tabs = listOf("Ringkasan", "Privasi", "Perilaku", "Teknologi", "Komponen", "Izin", "Kemampuan", "Isi APK", "Kode", "Manifest", "DNA", "Kulit", "Jejak") + listOfNotNull(baseline?.let { "Banding" })
     // The Banding tab disappears when the baseline is cleared.
     val tab = selectedTab.coerceAtMost(tabs.lastIndex)
     // A method to open in the Kode tab, set when another tab links to code.
@@ -63,6 +63,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
             "Komponen" -> ComponentsScreen(report)
             "Izin" -> PermissionsScreen(report)
             "Kemampuan" -> CapabilitiesScreen(report.capabilities)
+            "Perilaku" -> BehaviorScreen(report.behaviors, report.code.methods.mapTo(HashSet()) { it.id }, openMethod)
             "Isi APK" -> ArchiveBrowser(report.structure, loadPreview)
             "Kode" -> CodeExplorer(report.code, pendingMethod) { pendingMethod = null }
             "Manifest" -> ManifestScreen(report)
@@ -82,6 +83,12 @@ private fun Overview(report: AnatomyReport, open: (String) -> Unit) {
         item {
             val privacy = remember(report) { report.privacyProfile() }
             LessonCard("Privasi", privacy.summary, onClick = { open("Privasi") })
+        }
+        item {
+            val b = report.behaviors
+            LessonCard("Perilaku", if (b.findings.isEmpty()) "Tidak ada pemanggilan API sensitif yang dikenali di kode yang terbaca." else
+                "${b.findings.size} perilaku dari ${b.categories.size} kelompok (${b.findings.count { it.level == NoteLevel.PERHATIAN }} perlu perhatian): " +
+                    b.findings.take(4).joinToString { it.title.lowercase() } + if (b.findings.size > 4) ", …" else ".", onClick = { open("Perilaku") })
         }
         item { LessonCard("Teknologi", s.technologies.joinToString { it.name }.ifEmpty { "Belum ada penanda framework yang dikenali. Ini tidak otomatis berarti aplikasi pure native." } +
             "\n${report.sdks.size} SDK/library dikenali" + (report.sdks.takeIf { it.isNotEmpty() }?.joinToString(prefix = ": ") { it.name }?.take(160) ?: "."), onClick = { open("Teknologi") }) }
@@ -468,12 +475,33 @@ private fun TracesScreen(traces: TraceReport, indexed: Set<String>, openMethod: 
     }
 }
 
+@Composable
+private fun BehaviorScreen(behaviors: BehaviorReport, indexed: Set<String>, openMethod: (String) -> Unit) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+        item {
+            LessonCard("Pelajari perilaku", "Izin hanya menyatakan apa yang boleh; kode menunjukkan apa yang dipanggil. Setiap instruksi DEX yang terbaca " +
+                "(${behaviors.scannedInstructions} instruksi) diperiksa untuk pemanggilan API sensitif dan pola berisiko. Ini bukti bahwa kode ada, " +
+                "bukan bahwa kode dijalankan: banyak temuan berasal dari library yang fiturnya tidak dipakai. Kode yang dimuat saat berjalan tidak terlihat.")
+        }
+        if (behaviors.findings.isEmpty()) item { Text("Tidak ada pemanggilan API sensitif yang dikenali.", style = MaterialTheme.typography.bodyMedium) }
+        behaviors.findings.groupBy { it.category }.forEach { (category, findings) ->
+            item(key = "cat:$category") { Text(category, style = MaterialTheme.typography.titleMedium) }
+            items(findings, key = { "b:${it.id}" }) { finding ->
+                NoteCard(SecurityNote(finding.level, finding.title, finding.lesson + "\n\nAPI: " + finding.apis.joinToString() +
+                    "\n${finding.count} tempat" + if (finding.inAppPackage > 0) ", ${finding.inAppPackage} di package aplikasi sendiri." else ", semuanya di luar package aplikasi (library)."))
+                UsedBy(finding.usedBy, indexed, openMethod, label = "Contoh lokasi:")
+            }
+        }
+        items(behaviors.notes) { LessonCard("Hasil sebagian", it) }
+    }
+}
+
 /** Links to the methods that load a string, opening them in the Kode tab; methods outside the code index are listed without a link. */
 @Composable
-private fun UsedBy(methodIds: List<String>, indexed: Set<String>, openMethod: (String) -> Unit) {
+private fun UsedBy(methodIds: List<String>, indexed: Set<String>, openMethod: (String) -> Unit, label: String = "Dipakai di (const-string):") {
     if (methodIds.isEmpty()) return
     Column(Modifier.padding(start = 8.dp)) {
-        Text("Dipakai di (const-string):", style = MaterialTheme.typography.labelMedium)
+        Text(label, style = MaterialTheme.typography.labelMedium)
         methodIds.forEach { id ->
             if (id in indexed) TextButton(onClick = { openMethod(id) }) { Text("→ ${prettyMethod(id)}", style = MaterialTheme.typography.bodySmall) }
             else Text("${prettyMethod(id)} (di luar indeks kode)", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))

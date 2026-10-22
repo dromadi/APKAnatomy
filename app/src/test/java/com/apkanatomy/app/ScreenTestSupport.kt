@@ -92,6 +92,12 @@ internal fun richReport(): AnatomyReport {
             NativeLibInfo("base.apk", "lib/arm64-v8a/libtoko.so", "arm64-v8a", 210_000, "AArch64", 64, 16384, true, 16384, "libtoko.so",
                 listOf("libc.so"), listOf("id.contoh.toko.crypto.Native.sign", "id.contoh.toko.crypto.Native.verify"), false, true, false)),
             extractNativeLibs = false),
+        behaviors = BehaviorCollector("id.contoh.toko").apply {
+            method(CHECKOUT, listOf("Landroid/webkit/WebView;" to "addJavascriptInterface", "Landroid/webkit/WebSettings;" to "setJavaScriptEnabled"), emptyList(), 12)
+            pattern(BehaviorPatterns.TRUST_ALL, "base.apk:classes2.dex:Lcom/vendor/net/LaxTrust;->checkServerTrusted([Ljava/security/cert/X509Certificate;Ljava/lang/String;)V")
+            method("base.apk:classes2.dex:Lcom/vendor/Loader;->load()V", listOf("Ldalvik/system/DexClassLoader;" to "<init>"), emptyList(), 40)
+            method("base.apk:classes2.dex:Lcom/vendor/Keys;->make()V", listOf("Landroid/security/keystore/KeyGenParameterSpec\$Builder;" to "<init>"), emptyList(), 8)
+        }.result(),
         traces = TraceCollector().apply {
             scan("https://api.contoh.id/v2/checkout", "base.apk/classes.dex")
             reference("https://api.contoh.id/v2/checkout", CHECKOUT)

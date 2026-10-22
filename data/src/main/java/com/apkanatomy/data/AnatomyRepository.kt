@@ -12,7 +12,7 @@ import java.io.File
 import java.util.zip.ZipFile
 
 /** Steps of an analysis, in order, as shown in the progress indicator. */
-val ANALYSIS_STEPS = listOf("Menyiapkan file", "Membaca struktur arsip", "Mengindeks kode DEX & string", "Memeriksa tanda tangan",
+val ANALYSIS_STEPS = listOf("Menyiapkan file", "Membaca struktur arsip", "Mengindeks kode, string & perilaku", "Memeriksa tanda tangan",
     "Membaca manifest & resource", "Memindai jejak di resource & assets", "Membaca library native")
 
 @Suppress("DEPRECATION")
@@ -121,7 +121,8 @@ class AnatomyRepository(private val context: Context) {
         val structure = StructureScanner().scan(files).let { if (skipped.isNullOrEmpty()) it else it.copy(warnings = skipped + it.warnings) }
         step(2)
         val traces = TraceCollector()
-        val code = DexCodeScanner().scan(files, info.packageName, traces) { context.ensureActive() }
+        val behaviors = BehaviorCollector(info.packageName)
+        val code = DexCodeScanner().scan(files, info.packageName, traces, behaviors) { context.ensureActive() }
         step(3)
         val signing = signingOf()
         step(4)
@@ -162,7 +163,7 @@ class AnatomyRepository(private val context: Context) {
                 AppPermission(name, protection)
             }, structure, code, manifestXml = manifest.xml, manifestNote = manifest.note,
             signing = signing, security = securityFlags(app, manifest), sdks = detectSdks(code.packages, structure.libraryVersions),
-            iconPng = iconPng(app), networkSecurity = networkSecurity, traces = traces.result(), native = native,
+            iconPng = iconPng(app), networkSecurity = networkSecurity, traces = traces.result(), native = native, behaviors = behaviors.result(),
             capabilities = manifest.root?.let { CapabilitiesReader.read(it, baseApk, table) } ?: Capabilities(),
             resources = (table?.let { ResourceSummary(it.resourceCount, it.typeCounts().entries.sortedByDescending { e -> e.value }.associate { e -> e.key to e.value }, it.locales().toList(), nscNote) }
                 ?: tableNote?.let { ResourceSummary(0, emptyMap(), emptyList(), listOfNotNull(it, nscNote).joinToString(" ")) }))
