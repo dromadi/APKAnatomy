@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.33
+# APKAnatomy 0.1.0-alpha.34
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -352,3 +352,13 @@ Teknologi opens with a **Peta kode**: a treemap where each box is a group of pac
 - Below the map: the app's own share of classes and the five largest groups.
 
 The layout is a squarified treemap (Bruls, Huizing & van Wijk) in domain code. A unit test checks that areas are proportional and match the paper's example; labels are drawn only where they fit.
+
+## Alpha.34: permissions ↔ code
+
+The Izin tab starts with **Izin ↔ kode**, which joins the manifest with the Perilaku scan. Seven permission groups have APIs the scanner recognises: location, camera, microphone, phone state, sending SMS, QUERY_ALL_PACKAGES and AD_ID.
+
+- For each such permission the app requests, the tab shows "dipakai di kode" (with how many call sites are in the app's own package and example methods that open in Kode) or "pemakaian tidak terlihat".
+- The reverse case is shown too: an API group called without its permission. That is usually library code that checks first; unchecked, the call would throw SecurityException. AD_ID and installed-app listing are left out, because Play services merges the former and `<queries>` covers the latter.
+- The text explains why "not seen" is not proof of non-use: libraries, native code, WebView, intents to other apps and code loaded at runtime are all invisible to the scan.
+
+The matching is domain code (`permissionUse()`, `undeclaredUse()`) with unit tests, and is part of the Markdown/HTML export.

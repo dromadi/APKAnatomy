@@ -148,6 +148,14 @@ class RichReportScreenTest {
         compose.shot("rich_code_map")
     }
 
+    @Test fun permissionsAreMatchedWithCode() {
+        show()
+        compose.openTab("Izin")
+        compose.onNodeWithText("Izin ↔ kode").assertExists()
+        compose.onNodeWithText("Info · CAMERA: pemakaian tidak terlihat").assertExists()
+        compose.shot("rich_permission_use")
+    }
+
     @Test fun codeTabSearchesStringLiterals() {
         show()
         compose.openTab("Kode")

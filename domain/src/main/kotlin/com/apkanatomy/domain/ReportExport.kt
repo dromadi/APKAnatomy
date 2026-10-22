@@ -48,6 +48,8 @@ fun AnatomyReport.toMarkdown(now: Long): String = buildString {
     }
     appendLine()
     appendLine("### Izin")
+    permissionUse().forEach { appendLine("- ${it.permission.substringAfterLast('.')} ↔ kode: " + if (it.seen) "dipakai (${md(it.behaviorTitle)})" else "pemakaian tidak terlihat") }
+    undeclaredUse().forEach { appendLine("- ${md(it.behaviorTitle)} dipanggil tanpa ${it.permissions.joinToString { p -> p.substringAfterLast('.') }}") }
     permissions.sortedBy { sensitivePermissionLesson(it.name) == null }.forEach {
         appendLine("- `${it.name}` (${it.protection})" + (sensitivePermissionLesson(it.name)?.let { lesson -> " ⚠ $lesson" } ?: ""))
     }

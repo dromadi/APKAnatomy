@@ -68,7 +68,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
             "Privasi" -> PrivacyScreen(report)
             "Teknologi" -> TechnologyScreen(report)
             "Komponen" -> ComponentsScreen(report, openClass)
-            "Izin" -> PermissionsScreen(report)
+            "Izin" -> PermissionsScreen(report, report.code.methods.mapTo(HashSet()) { it.id }, openMethod)
             "Kemampuan" -> CapabilitiesScreen(report.capabilities)
             "Perilaku" -> BehaviorScreen(report.behaviors, report.code.methods.mapTo(HashSet()) { it.id }, openMethod, remember(report.native) { report.native.importFindings() })
             "Isi APK" -> ArchiveBrowser(report.structure, loadPreview)
@@ -310,13 +310,35 @@ private fun ComponentsScreen(report: AnatomyReport, openClass: (String) -> Unit)
 }
 
 @Composable
-private fun PermissionsScreen(report: AnatomyReport) {
+private fun PermissionsScreen(report: AnatomyReport, indexed: Set<String>, openMethod: (String) -> Unit) {
+    val use = remember(report) { report.permissionUse() }
+    val undeclared = remember(report) { report.undeclaredUse() }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item {
             val sensitive = report.permissions.count { sensitivePermissionLesson(it.name) != null }
             Text("$sensitive izin sensitif ditandai ⚠ dan ditampilkan lebih dulu.", style = MaterialTheme.typography.bodySmall)
         }
         item { LessonCard("Pelajari izin", "Izin memberi petunjuk kemampuan yang diminta aplikasi. Daftar ini berasal dari manifest, bukan bukti izin sudah diberikan atau kemampuan itu benar-benar digunakan.") }
+        if (use.isNotEmpty() || undeclared.isNotEmpty()) {
+            item(key = "use-title") { Text("Izin ↔ kode", style = MaterialTheme.typography.titleMedium) }
+            item(key = "use-lesson") {
+                Text("Apakah kode memanggil API yang dijaga izin itu? \"Tidak terlihat\" bukan bukti tidak dipakai: API bisa dipanggil lewat library, kode native, " +
+                    "WebView, intent ke aplikasi lain (mis. aplikasi kamera), atau kode yang dimuat saat berjalan.", style = MaterialTheme.typography.bodySmall)
+            }
+            items(use, key = { "use:${it.permission}" }) { u ->
+                NoteCard(SecurityNote(if (u.seen) NoteLevel.BAIK else NoteLevel.INFO, "${u.permission.substringAfterLast('.')}: " + if (u.seen) "dipakai di kode" else "pemakaian tidak terlihat",
+                    if (u.seen) "${u.behaviorTitle}, ${if (u.inAppPackage > 0) "${u.inAppPackage} tempat di kode aplikasi sendiri" else "hanya di library"}."
+                    else "Tidak ada pemanggilan \"${u.behaviorTitle.lowercase()}\" di kode yang terbaca. Bisa jadi izin sisa, atau dipakai lewat jalur yang tidak terlihat (lihat di atas)."))
+                if (u.seen) UsedBy(u.usedBy, indexed, openMethod, label = "Contoh lokasi:")
+            }
+            items(undeclared, key = { "undeclared:${it.behaviorTitle}" }) { u ->
+                NoteCard(SecurityNote(NoteLevel.INFO, "${u.behaviorTitle} tanpa izinnya",
+                    "Kode memanggil API ini, tetapi manifest tidak meminta ${u.permissions.joinToString { it.substringAfterLast('.') }}. Biasanya kode library yang memeriksa izin dulu " +
+                        "dan diam-diam tidak berjalan; bila tidak diperiksa, pemanggilan akan gagal (SecurityException)."))
+                UsedBy(u.usedBy, indexed, openMethod, label = "Contoh lokasi:")
+            }
+            item(key = "list-title") { Text("Semua izin", style = MaterialTheme.typography.titleMedium) }
+        }
         if (report.permissions.isEmpty()) item { Text("Tidak ada izin yang diminta.", style = MaterialTheme.typography.bodyMedium) }
         val sorted = report.permissions.sortedBy { sensitivePermissionLesson(it.name) == null }
         items(sorted, key = { it.name }) { permission ->
