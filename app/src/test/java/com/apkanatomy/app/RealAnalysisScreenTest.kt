@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
@@ -42,7 +43,7 @@ class RealAnalysisScreenTest {
     private fun analyze(name: String): AnatomyReport = runBlocking { repository.analyzeFile(fixtureUri(name)) }
 
     private fun show(report: AnatomyReport, baseline: AnatomyReport? = null) = compose.setContent {
-        MaterialTheme { Column(Modifier.fillMaxSize().padding(16.dp)) { AnatomyReportScreen(report, { repository.preview(it.archive, it.path) }, baseline) } }
+        MaterialTheme { Column(Modifier.fillMaxSize().padding(16.dp)) { AnatomyReportScreen(report, { repository.preview(it.archive, it.path) }, baseline, loadResources = { repository.resources() }) } }
     }
 
     @Test fun resourceDemoShowsResolvedNamesNetworkConfigAndPreviews() {
@@ -71,6 +72,21 @@ class RealAnalysisScreenTest {
         compose.openTab("Kulit")
         compose.scrollToText("Resource & bahasa")
         compose.shot("real_kulit")
+    }
+
+    @Test fun resourceExplorerShowsEveryConfiguration() {
+        show(analyze("arsc/resources-demo.apk"))
+        compose.openTab("Kulit")
+        compose.scrollToText("Jelajahi resource →")
+        compose.onNodeWithText("Jelajahi resource →").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("Cari nama, ID, atau isi")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(androidx.compose.ui.test.hasSetTextAction()).performTextInput("app_name")
+        // Values match aapt2 dump resources: () "Anatomi Demo", (in) "Demo Anatomi".
+        compose.onNodeWithText("default: Anatomi Demo\nin: Demo Anatomi").assertExists()
+        compose.onNodeWithText("0x7f060000").assertExists()
+        compose.shot("real_resource_explorer")
+        compose.onNodeWithText("Kembali ke Kulit").performClick()
+        compose.onNodeWithText("Pelajari kulit aplikasi").assertExists()
     }
 
     @Test fun signedApkShowsSchemesAndCertificate() {

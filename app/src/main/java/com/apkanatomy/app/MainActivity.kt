@@ -85,7 +85,7 @@ private fun AnatomyApp(model: AnatomyViewModel) {
                     else -> AppList(state.apps, state.busy, model::inspect)
                 }
             }
-            else AnatomyReportScreen(report, model::preview, state.baseline.takeUnless { state.reportIsBaseline }, model::clearBaseline)
+            else AnatomyReportScreen(report, model::preview, state.baseline.takeUnless { state.reportIsBaseline }, model::clearBaseline, model::resources)
         }
     }
 }

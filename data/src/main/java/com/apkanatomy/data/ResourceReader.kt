@@ -7,6 +7,8 @@ import com.apkanatomy.axml.XmlElement
 import com.apkanatomy.axml.XmlText
 import com.apkanatomy.domain.NetworkSecurityConfig
 import com.apkanatomy.domain.NscScope
+import com.apkanatomy.domain.ResourceItem
+import com.apkanatomy.domain.ResourceListing
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -29,6 +31,16 @@ internal object ResourceReader {
         null to "resources.arsc tidak dapat dibaca: ${e.message}"
     } catch (e: IOException) {
         null to "resources.arsc tidak dapat dibuka: ${e.message}"
+    }
+
+    /** Every resource with its values for browsing; values are cut to [maxValue] characters and the list to [maxItems]. */
+    fun listing(table: ResourceTable?, note: String?, maxItems: Int = 50_000, maxValue: Int = 500): ResourceListing {
+        if (table == null) return ResourceListing(emptyList(), note ?: "APK ini tidak memiliki resources.arsc.")
+        val ids = table.ids()
+        val items = ids.take(maxItems).map { id ->
+            ResourceItem(id, table.name(id) ?: "0x%08x".format(id), table.values(id).map { (config, value) -> config to value.take(maxValue) })
+        }
+        return ResourceListing(items, if (ids.size > maxItems) "Menampilkan $maxItems dari ${ids.size} resource." else null)
     }
 
     /** Locates the file behind android:networkSecurityConfig through the resource table and parses it. */

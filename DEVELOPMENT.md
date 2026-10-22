@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.24
+# APKAnatomy 0.1.0-alpha.25
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -270,3 +270,7 @@ When an APK file or bundle is analysed and the same package is installed, the re
 - **Install source.** For both file and installed-app analyses, the installer package is named: Google Play, F-Droid, Galaxy Store, AppGallery, the package installer for sideloads, or "not recorded" for adb/system apps.
 
 Signers come from `SigningInfo` (API 28+, `apkContentsSigners` for multi-signer apps, `signingCertificateHistory` otherwise) or `GET_SIGNATURES` below 28, hashed as SHA-256 like the DNA tab. `AnatomyReport` gains `versionCode`, `installer` and `installedCopy`; the comparison logic is pure domain code with unit tests. History entries from earlier builds cannot be read after this model change and are removed with a message, as designed in alpha.19.
+
+## Alpha.25: resource browser
+
+The "Resource & bahasa" card in Kulit opens a browser for `resources.arsc`: type chips (string, color, dimen, bool, …, ordered by count), a search over names, IDs and values, and one card per resource with its ID and its value in every configuration (default, `in`, `night`, `sw600dp`, …). The repository builds the listing on demand from the base APK's table, which it shares with the file previews, and caps it at 50,000 resources and 500 characters per value; the screen shows up to 300 matches. For a report opened from history the archive is gone, and the browser says so. On the demo fixture the values match `aapt2 dump resources` (`string/app_name`: "Anatomi Demo", `in`: "Demo Anatomi").

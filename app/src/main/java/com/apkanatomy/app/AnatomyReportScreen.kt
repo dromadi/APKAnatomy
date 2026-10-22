@@ -7,6 +7,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -30,7 +32,8 @@ import kotlinx.coroutines.launch
 
 @Composable
 internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (ArchiveEntry) -> FilePreview,
-    baseline: AnatomyReport? = null, clearBaseline: () -> Unit = {}) {
+    baseline: AnatomyReport? = null, clearBaseline: () -> Unit = {},
+    loadResources: suspend () -> ResourceListing = { ResourceListing(emptyList(), "Penjelajah resource tidak tersedia di sini.") }) {
     var selectedTab by rememberSaveable(report.packageName, report.source) { mutableIntStateOf(0) }
     val tabs = listOf("Ringkasan", "Privasi", "Perilaku", "Teknologi", "Komponen", "Izin", "Kemampuan", "Isi APK", "Kode", "Manifest", "DNA", "Kulit", "Jejak") + listOfNotNull(baseline?.let { "Banding" })
     // The Banding tab disappears when the baseline is cleared.
@@ -70,7 +73,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
             "Kode" -> CodeExplorer(report.code, pendingMethod, pendingClass, remember(report.components) { report.components.entryTypes() }) { pendingMethod = null; pendingClass = null }
             "Manifest" -> ManifestScreen(report)
             "DNA" -> DnaScreen(report)
-            "Kulit" -> SkinScreen(report)
+            "Kulit" -> SkinScreen(report, loadResources)
             "Jejak" -> TracesScreen(report.traces, report.code.methods.mapTo(HashSet()) { it.id }, openMethod)
             "Banding" -> baseline?.let { CompareScreen(it, report, clearBaseline) }
         }
@@ -328,8 +331,51 @@ private fun DnaScreen(report: AnatomyReport) {
     }
 }
 
+/** Browse resources.arsc: filter by type, search names and values, and see every configuration's value. */
 @Composable
-private fun SkinScreen(report: AnatomyReport) {
+private fun ResourceExplorer(loadResources: suspend () -> ResourceListing, back: () -> Unit) {
+    BackHandler(onBack = back)
+    var listing by remember { mutableStateOf<ResourceListing?>(null) }
+    LaunchedEffect(Unit) { listing = try { loadResources() } catch (e: Exception) { ResourceListing(emptyList(), e.message ?: "Resource gagal dibaca.") } }
+    var type by rememberSaveable { mutableStateOf<String?>("string") }
+    var query by rememberSaveable { mutableStateOf("") }
+    TextButton(onClick = back) { Text("Kembali ke Kulit") }
+    val current = listing
+    if (current == null) { LinearProgressIndicator(Modifier.fillMaxWidth()); return }
+    val types = remember(current) { current.types }
+    val effectiveType = type?.takeIf { it in types }
+    val shown = remember(current, effectiveType, query) { current.items.filterBy(effectiveType, query) }
+    OutlinedTextField(query, { query = it }, label = { Text("Cari nama, ID, atau isi") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = effectiveType == null, onClick = { type = null }, label = { Text("Semua") })
+        types.forEach { t -> FilterChip(selected = effectiveType == t, onClick = { type = t }, label = { Text(t) }) }
+    }
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+        item {
+            Text("${shown.size} resource. Setiap resource punya ID 0x7f… dan nilai per konfigurasi (bahasa, mode malam, ukuran layar); " +
+                "Android memilih yang paling cocok dengan perangkat.", style = MaterialTheme.typography.bodySmall)
+        }
+        current.note?.let { item { LessonCard("Catatan", it) } }
+        items(shown.take(300), key = { it.id }) { item ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(item.name, style = MaterialTheme.typography.titleSmall)
+                    Text(item.idHex, style = MaterialTheme.typography.labelSmall)
+                    SelectionContainer {
+                        Text(item.values.take(40).joinToString("\n") { (config, value) -> "${describeConfig(config)}: $value" } +
+                            if (item.values.size > 40) "\n… ${item.values.size - 40} konfigurasi lain" else "", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+        if (shown.size > 300) item { Text("Menampilkan 300 hasil; persempit pencarian.", style = MaterialTheme.typography.bodySmall) }
+    }
+}
+
+@Composable
+private fun SkinScreen(report: AnatomyReport, loadResources: suspend () -> ResourceListing) {
+    var exploring by rememberSaveable(report.packageName) { mutableStateOf(false) }
+    if (exploring) { ResourceExplorer(loadResources) { exploring = false }; return }
     val s = report.structure
     val slices = remember(s) { sizeBreakdown(s.entries) }
     val groups = remember(s) { notableFiles(s.entries) }
@@ -346,6 +392,7 @@ private fun SkinScreen(report: AnatomyReport) {
                     res.typeCounts.entries.take(12).joinToString(" · ") { "${it.key} ${it.value}" } +
                     "\n\n${res.locales.size} bahasa/wilayah" + (if (res.locales.isNotEmpty()) ": " + res.locales.joinToString() else "") +
                     ". Terjemahan menunjukkan pasar yang dituju; sebagian bisa berasal dari library.")
+                if (res.count > 0) TextButton(onClick = { exploring = true }) { Text("Jelajahi resource →") }
             }
         }
         groups.forEach { group ->

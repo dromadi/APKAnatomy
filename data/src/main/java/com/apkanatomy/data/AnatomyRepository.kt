@@ -107,6 +107,16 @@ class AnatomyRepository(private val context: Context) {
         PreviewReader.preview(file, path, table)
     }
 
+    /** Every resource of the current base APK, for the resource browser. */
+    suspend fun resources(): ResourceListing = withContext(Dispatchers.IO) {
+        val base = archives["base.apk"] ?: return@withContext ResourceListing(emptyList(), "Arsip tidak lagi tersedia; buka ulang laporannya.")
+        val cached = previewTable?.takeIf { it.first == base }?.second
+        if (cached != null) return@withContext ResourceReader.listing(cached, null)
+        val (table, note) = ResourceReader.read(base)
+        previewTable = base to table
+        ResourceReader.listing(table, note)
+    }
+
     /** Forgets the current report's archives and deletes a retained import. */
     fun release() {
         archives = emptyMap()

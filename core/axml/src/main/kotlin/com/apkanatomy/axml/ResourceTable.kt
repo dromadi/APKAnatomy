@@ -40,6 +40,9 @@ class ResourceTable private constructor(
     fun stringValues(): Sequence<Pair<String, String>> = entries.values.asSequence().flatten()
         .filter { it.dataType == TYPE_STRING }.mapNotNull { e -> globalStrings.getOrNull(e.data)?.let { e.name to it } }
 
+    /** Every resource ID in the table, ascending. */
+    fun ids(): List<Int> = entries.keys.sorted()
+
     /** Resource IDs per type name, e.g. "string" to 120. */
     fun typeCounts(): Map<String, Int> = entries.values.groupingBy { it.first().name.substringBefore('/') }.eachCount()
 

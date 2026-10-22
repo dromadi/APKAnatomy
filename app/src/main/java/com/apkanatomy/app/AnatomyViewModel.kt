@@ -64,6 +64,7 @@ class AnatomyViewModel(application: Application) : AndroidViewModel(application)
     fun deleteHistory(id: String) = runWork { withContext(Dispatchers.IO) { historyStore.delete(id) }; refreshHistory() }
     fun clearHistory() = runWork { withContext(Dispatchers.IO) { historyStore.clear() }; refreshHistory() }
     suspend fun preview(entry: ArchiveEntry): FilePreview = repository.preview(entry.archive, entry.path)
+    suspend fun resources(): ResourceListing = repository.resources()
     override fun onCleared() = repository.release()
 
     private suspend fun loadHistory(id: String): AnatomyReport? {
