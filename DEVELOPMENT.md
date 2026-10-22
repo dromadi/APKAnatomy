@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.25
+# APKAnatomy 0.1.0-alpha.26
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -274,3 +274,7 @@ Signers come from `SigningInfo` (API 28+, `apkContentsSigners` for multi-signer 
 ## Alpha.25: resource browser
 
 The "Resource & bahasa" card in Kulit opens a browser for `resources.arsc`: type chips (string, color, dimen, bool, …, ordered by count), a search over names, IDs and values, and one card per resource with its ID and its value in every configuration (default, `in`, `night`, `sw600dp`, …). The repository builds the listing on demand from the base APK's table, which it shares with the file previews, and caps it at 50,000 resources and 500 characters per value; the screen shows up to 300 matches. For a report opened from history the archive is gone, and the browser says so. On the demo fixture the values match `aapt2 dump resources` (`string/app_name`: "Anatomi Demo", `in`: "Demo Anatomi").
+
+## Alpha.26: search the whole report
+
+A **Cari** tab, right after Ringkasan, searches every section at once: trackers and data categories, behaviours, technologies, SDKs, library versions and native libraries, components and their intent filters, permissions, capabilities, classes, methods and string literals, manifest lines, DNA notes and certificates, hosts and key candidates, and file paths. Results are grouped by section (30 per section). Tapping a class or method opens it in Kode; anything else opens its tab. `searchAll()` is a domain function with unit tests; the sections are lazy sequences, so each keystroke only scans until it has enough matches.

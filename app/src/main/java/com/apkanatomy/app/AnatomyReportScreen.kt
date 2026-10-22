@@ -35,7 +35,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
     baseline: AnatomyReport? = null, clearBaseline: () -> Unit = {},
     loadResources: suspend () -> ResourceListing = { ResourceListing(emptyList(), "Penjelajah resource tidak tersedia di sini.") }) {
     var selectedTab by rememberSaveable(report.packageName, report.source) { mutableIntStateOf(0) }
-    val tabs = listOf("Ringkasan", "Privasi", "Perilaku", "Teknologi", "Komponen", "Izin", "Kemampuan", "Isi APK", "Kode", "Manifest", "DNA", "Kulit", "Jejak") + listOfNotNull(baseline?.let { "Banding" })
+    val tabs = listOf("Ringkasan", "Cari", "Privasi", "Perilaku", "Teknologi", "Komponen", "Izin", "Kemampuan", "Isi APK", "Kode", "Manifest", "DNA", "Kulit", "Jejak") + listOfNotNull(baseline?.let { "Banding" })
     // The Banding tab disappears when the baseline is cleared.
     val tab = selectedTab.coerceAtMost(tabs.lastIndex)
     // A method to open in the Kode tab, set when another tab links to code.
@@ -63,6 +63,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
     key(report.packageName, report.source) {
         when (tabs[tab]) {
             "Ringkasan" -> Overview(report) { name -> selectedTab = tabs.indexOf(name).coerceAtLeast(0) }
+            "Cari" -> SearchScreen(report, { name -> selectedTab = tabs.indexOf(name).coerceAtLeast(0) }, openMethod, openClass)
             "Privasi" -> PrivacyScreen(report)
             "Teknologi" -> TechnologyScreen(report)
             "Komponen" -> ComponentsScreen(report, openClass)
@@ -76,6 +77,39 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
             "Kulit" -> SkinScreen(report, loadResources)
             "Jejak" -> TracesScreen(report.traces, report.code.methods.mapTo(HashSet()) { it.id }, openMethod)
             "Banding" -> baseline?.let { CompareScreen(it, report, clearBaseline) }
+        }
+    }
+}
+
+/** One search box over every section of the report; a hit opens its tab, or the class or method in Kode. */
+@Composable
+private fun SearchScreen(report: AnatomyReport, openTab: (String) -> Unit, openMethod: (String) -> Unit, openClass: (String) -> Unit) {
+    var query by rememberSaveable(report.packageName) { mutableStateOf("") }
+    val results = remember(report, query) { report.searchAll(query) }
+    val indexed = remember(report.code) { report.code.methods.mapTo(HashSet()) { it.id } }
+    OutlinedTextField(query, { query = it }, label = { Text("Cari di seluruh laporan") }, singleLine = true, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+        if (query.trim().length < 2) item {
+            LessonCard("Cari apa saja", "Nama komponen, izin, SDK, host, perilaku, class, method, string literal, baris manifest, catatan DNA, atau nama file. " +
+                "Contoh: \"login\", \"firebase\", \"CAMERA\", \"http://\".")
+        } else if (results.isEmpty()) item { Text("Tidak ada yang cocok dengan \"${query.trim()}\".", style = MaterialTheme.typography.bodyMedium) }
+        results.forEach { (section, hits) ->
+            item(key = "s:$section") { Text("$section (${hits.size}${if (hits.size >= 30) "+" else ""})", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp)) }
+            items(hits.withIndex().toList(), key = { "h:$section:${it.index}" }) { (_, hit) ->
+                val classId = hit.classId
+                val methodId = hit.methodId
+                val action = when {
+                    classId != null -> { { openClass(classId) } }
+                    methodId != null && methodId in indexed && hit.tab == "Kode" -> { { openMethod(methodId) } }
+                    else -> { { openTab(hit.tab) } }
+                }
+                Card(Modifier.fillMaxWidth().clickable(onClick = action)) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(hit.title, style = MaterialTheme.typography.titleSmall)
+                        Text(hit.detail, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
         }
     }
 }

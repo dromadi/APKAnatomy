@@ -37,7 +37,7 @@ class RichReportScreenTest {
     @Test fun everyTabRenders() {
         show()
         compose.shot("rich_overview")
-        for ((tab, marker) in listOf("Privasi" to "Pelacak (1)", "Perilaku" to "Pelajari perilaku", "Teknologi" to "Google AdMob", "Komponen" to "Pelajari komponen", "Izin" to "SYSTEM_ALERT_WINDOW", "Kemampuan" to "TrackingService",
+        for ((tab, marker) in listOf("Cari" to "Cari apa saja", "Privasi" to "Pelacak (1)", "Perilaku" to "Pelajari perilaku", "Teknologi" to "Google AdMob", "Komponen" to "Pelajari komponen", "Izin" to "SYSTEM_ALERT_WINDOW", "Kemampuan" to "TrackingService",
             "Isi APK" to "classes.dex", "Kode" to "Mulai menelusuri", "Manifest" to "android:label", "DNA" to "Catatan audit", "Kulit" to "Kode DEX", "Jejak" to "Midtrans server key")) {
             compose.openTab(tab)
             compose.onNodeWithText(marker, substring = true, useUnmergedTree = true).assertExists()
@@ -116,6 +116,17 @@ class RichReportScreenTest {
         compose.onNodeWithText("Perlu perhatian · Penandatangan berbeda dari aplikasi terpasang").assertExists()
         compose.onNodeWithText("Info · Versi file lebih baru dari yang terpasang").assertExists()
         compose.shot("rich_dna_authenticity")
+    }
+
+    @Test fun globalSearchFindsCodeAndOpensIt() {
+        show()
+        compose.openTab("Cari")
+        compose.onNode(androidx.compose.ui.test.hasSetTextAction()).performTextInput("checkout")
+        compose.onNodeWithText("Kode (4)").assertExists()
+        compose.shot("rich_search")
+        compose.onAllNodes(androidx.compose.ui.test.hasText("method · ", substring = true))[0].performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Instruksi").assertExists()
     }
 
     @Test fun codeTabSearchesStringLiterals() {
