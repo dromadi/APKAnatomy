@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import com.apkanatomy.domain.FilePreview
+import com.apkanatomy.domain.toHtml
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -127,6 +128,13 @@ class RichReportScreenTest {
         compose.onAllNodes(androidx.compose.ui.test.hasText("method · ", substring = true))[0].performClick()
         compose.waitForIdle()
         compose.onNodeWithText("Instruksi").assertExists()
+    }
+
+    /** Writes the HTML export next to the screenshots so CI uploads it for review. */
+    @Test fun htmlExportIsWrittenForReview() {
+        val html = richReport().toHtml(1_760_000_000_000)
+        java.io.File("build/outputs/roborazzi").apply { mkdirs() }.resolve("rich_report.html").writeText(html)
+        org.junit.Assert.assertTrue(html.contains("<h2>Perilaku</h2>"))
     }
 
     @Test fun codeTabSearchesStringLiterals() {

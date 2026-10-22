@@ -215,6 +215,7 @@ private fun ExportMenu(report: AnatomyReport, hasBaseline: Boolean, keepAsBaseli
     }
     val saveMarkdown = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown"), ::save)
     val saveJson = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json"), ::save)
+    val saveHtml = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/html"), ::save)
     val baseName = "apkanatomy-${report.packageName}-${report.version}".replace(Regex("[^A-Za-z0-9._-]"), "_")
     Box {
         OutlinedButton(onClick = { expanded = true }) { Text("Aksi") }
@@ -227,6 +228,9 @@ private fun ExportMenu(report: AnatomyReport, hasBaseline: Boolean, keepAsBaseli
             HorizontalDivider()
             DropdownMenuItem(text = { Text("Simpan Markdown") }, onClick = {
                 expanded = false; pending = report.toMarkdown(System.currentTimeMillis()); saveMarkdown.launch("$baseName.md")
+            })
+            DropdownMenuItem(text = { Text("Simpan HTML (buka di browser)") }, onClick = {
+                expanded = false; pending = report.toHtml(System.currentTimeMillis()); saveHtml.launch("$baseName.html")
             })
             DropdownMenuItem(text = { Text("Simpan JSON") }, onClick = {
                 expanded = false; pending = report.toJson(System.currentTimeMillis()); saveJson.launch("$baseName.json")

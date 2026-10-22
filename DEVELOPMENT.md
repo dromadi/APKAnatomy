@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.27
+# APKAnatomy 0.1.0-alpha.28
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -289,3 +289,13 @@ Teknologi starts with a **Proteksi & pengemasan** section (also in exports, sear
 - **Runtime checks** from the Perilaku tab: root and debugger detection, Play Integrity/SafetyNet and in-memory DEX loading.
 
 Detection is by evidence only and lists the files or packages it used. Commercial protectors that leave no stable file or package name (Promon, Arxan/Digital.ai, DexGuard) are not claimed.
+
+## Alpha.28: HTML export
+
+"Aksi" → "Simpan HTML (buka di browser)" writes one self-contained page: a header with the app icon (embedded as a data URI), six summary cards (components, permissions, SDKs, behaviours, hosts and notes needing attention) and every section of the Markdown export rendered as headings, lists and tables, in light and dark mode.
+
+Everything in an APK is untrusted, and a report is likely to be opened in a browser, so:
+- all text is HTML-escaped before the small Markdown subset (`code`, **bold**, _italic_, lists, pipe tables with escaped pipes) is turned into tags;
+- the page carries `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:`, so even a missed escape could not run a script or load anything remote.
+
+Unit tests feed a `<script>` payload through the label and a component name. The rich sample report is written to `app/build/outputs/roborazzi/rich_report.html` on every test run, so CI uploads it with the screenshots.
