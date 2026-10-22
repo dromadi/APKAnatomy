@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.30
+# APKAnatomy 0.1.0-alpha.31
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -322,3 +322,13 @@ A fourth home section, **Audit**, looks at all user apps (system apps optional) 
 - cleartext allowed, more than one open component, or an installer that is not a known store: 1 point each.
 
 The screen says the points are not a security rating, shows per-filter counts (Pelacak, Data pribadi, Target lama, Debuggable, Bukan dari toko, Komponen terbuka) as chips, and opens the full analysis on tap. The audit shows "Memeriksa n/N: app" with a Batal button and runs under the same cancellable job as an analysis.
+
+## Alpha.31: what changed since the last analysis
+
+When an app or APK has been analysed before, the new report is compared with the last history entry of the same package automatically. This happens before the new report replaces that entry.
+
+- The earlier report becomes the Banding baseline, and a message says when it was analysed and how many changes there are, or that nothing changed.
+- The overview starts with a **Perubahan dari <versi>** card: the number of changes, how many need a closer look, and changes per section. Tapping it opens Banding.
+- A baseline the user picked with "Jadikan pembanding" (from a report or the history) is never replaced. An automatic one is dropped when the next app has no history.
+
+`AutoCompareTest` drives the real ViewModel under Robolectric: two analyses of the same fixture, then a user-chosen baseline that a third analysis keeps.

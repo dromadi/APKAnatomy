@@ -23,6 +23,8 @@ data class UiState(val apps: List<AppEntry> = emptyList(), val report: AnatomyRe
     val busy: Boolean = false, val error: String? = null,
     /** A slimmed earlier report to compare against; [reportIsBaseline] is true while that same report is open. */
     val baseline: AnatomyReport? = null, val reportIsBaseline: Boolean = false,
+    /** The baseline was picked automatically from the history (the last analysis of the same package), not by the user. */
+    val baselineAuto: Boolean = false,
     /** Index into ANALYSIS_STEPS while an analysis runs; null otherwise. */
     val step: Int? = null,
     val history: List<HistoryEntry> = emptyList(),
@@ -63,8 +65,8 @@ class AnatomyViewModel(application: Application) : AndroidViewModel(application)
         mutable.update { it.copy(report = null, error = null, info = null) }
         repository.release()
     }
-    fun keepAsBaseline() = mutable.update { state -> state.copy(baseline = state.report?.asBaseline(), reportIsBaseline = state.report != null) }
-    fun clearBaseline() = mutable.update { it.copy(baseline = null, reportIsBaseline = false) }
+    fun keepAsBaseline() = mutable.update { state -> state.copy(baseline = state.report?.asBaseline(), reportIsBaseline = state.report != null, baselineAuto = false) }
+    fun clearBaseline() = mutable.update { it.copy(baseline = null, reportIsBaseline = false, baselineAuto = false) }
     fun openHistory(id: String) = runWork {
         val report = loadHistory(id) ?: return@runWork
         repository.release()
@@ -97,6 +99,7 @@ class AnatomyViewModel(application: Application) : AndroidViewModel(application)
         try {
             val report = run { step -> mutable.update { it.copy(step = step) } }
             mutable.update { it.copy(report = report, reportIsBaseline = false, step = null) }
+            compareWithPrevious(report)
             val saved = withContext(Dispatchers.IO) {
                 try { historyStore.save(report, System.currentTimeMillis()) } catch (_: IOException) { false }
             }
@@ -107,6 +110,31 @@ class AnatomyViewModel(application: Application) : AndroidViewModel(application)
             throw cancelled
         } finally { mutable.update { it.copy(step = null) } }
     }
+    /**
+     * Before the new report replaces it in the history, the last analysis of the same package becomes the
+     * Banding baseline, unless the user picked a baseline themselves.
+     */
+    private suspend fun compareWithPrevious(report: AnatomyReport) {
+        val state = mutable.value
+        if (state.baseline != null && !state.baselineAuto) return
+        val previous = withContext(Dispatchers.IO) {
+            historyStore.list().firstOrNull { it.packageName == report.packageName }?.let { entry -> historyStore.load(entry.id)?.let { entry to it } }
+        }
+        if (previous == null) {
+            if (state.baselineAuto) mutable.update { it.copy(baseline = null, baselineAuto = false) }
+            return
+        }
+        val (entry, old) = previous
+        val baseline = old.asBaseline()
+        val changes = compareReports(baseline, report, System.currentTimeMillis()).sumOf { it.changes.size }
+        val date = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(entry.savedAt))
+        mutable.update {
+            it.copy(baseline = baseline, baselineAuto = true, reportIsBaseline = false,
+                info = if (changes == 0) "Tidak ada perubahan sejak analisis $date (versi ${entry.version})."
+                else "Dibandingkan otomatis dengan analisis $date (versi ${entry.version}): $changes perubahan. Lihat tab Banding.")
+        }
+    }
+
     private fun runWork(block: suspend () -> Unit) {
         if (work?.isActive == true) return
         work = viewModelScope.launch {

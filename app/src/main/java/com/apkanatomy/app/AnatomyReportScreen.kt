@@ -62,7 +62,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
     }
     key(report.packageName, report.source) {
         when (tabs[tab]) {
-            "Ringkasan" -> Overview(report) { name -> selectedTab = tabs.indexOf(name).coerceAtLeast(0) }
+            "Ringkasan" -> Overview(report, baseline) { name -> selectedTab = tabs.indexOf(name).coerceAtLeast(0) }
             "Cari" -> SearchScreen(report, { name -> selectedTab = tabs.indexOf(name).coerceAtLeast(0) }, openMethod, openClass)
             "Privasi" -> PrivacyScreen(report)
             "Teknologi" -> TechnologyScreen(report)
@@ -115,9 +115,17 @@ private fun SearchScreen(report: AnatomyReport, openTab: (String) -> Unit, openM
 }
 
 @Composable
-private fun Overview(report: AnatomyReport, open: (String) -> Unit) {
+private fun Overview(report: AnatomyReport, baseline: AnatomyReport?, open: (String) -> Unit) {
     val s = report.structure
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+        if (baseline != null) item {
+            val diff = remember(report, baseline) { compareReports(baseline, report, System.currentTimeMillis()) }
+            val count = diff.sumOf { it.changes.size }
+            val flagged = diff.sumOf { section -> section.changes.count { it.attention } }
+            LessonCard("Perubahan dari ${baseline.version}", if (count == 0) "Tidak ada perbedaan dengan laporan pembanding (${baseline.label} ${baseline.version})."
+                else "$count perubahan dibanding ${baseline.label} ${baseline.version}" + (if (flagged > 0) ", $flagged perlu dicermati" else "") +
+                    ": " + diff.joinToString { "${it.title} (${it.changes.size})" } + ".", onClick = { open("Banding") })
+        }
         item { LessonCard("Mulai membedah", "Kenali teknologinya, jelajahi komponen, lalu telusuri file yang menyusunnya. Hasil ini berasal dari analisis statis paket; alur eksekusi belum direkam.") }
         item {
             val privacy = remember(report) { report.privacyProfile() }
