@@ -37,7 +37,8 @@ class TraceSourcesTest {
             "assets/logo.png" to "https://ignored.contoh.id/".toByteArray(),
             "res/raw/endpoints.txt" to "wss://ws.contoh.id/socket".toByteArray()))
         val traces = TraceCollector()
-        DexCodeScanner().scan(listOf(app), traces = traces)
+        val code = DexCodeScanner().scan(listOf(app), traces = traces)
+        assertEquals(listOf("https://api.contoh.id/v2/login", awsKey), code.strings.map { it.value })
         TraceSources.scanFiles(mapOf("base.apk" to app), traces)
         val demo = javaClass.classLoader!!.getResourceAsStream("arsc/resources-demo.apk")!!.readBytes().let { temp.newFile("demo.apk").apply { writeBytes(it) } }
         TraceSources.scanResources(ResourceReader.read(demo).first, traces)
@@ -52,6 +53,9 @@ class TraceSourcesTest {
         assertNull(hosts["ignored.contoh.id"])
         assertEquals(listOf("base.apk/classes.dex"), report.secrets.single { it.type == "AWS access key ID" }.locations)
         assertTrue(report.scannedStrings > 10) // DEX strings, resource strings and meta-data values were all fed in
+        // const-string instructions link the host and the key back to the method that loads them.
+        assertEquals(listOf("base.apk:classes.dex:Lsample/Demo;->f()V"), hosts.getValue("api.contoh.id").usedBy)
+        assertEquals(listOf("base.apk:classes.dex:Lsample/Demo;->f()V"), report.secrets.single().usedBy)
     }
 
     @Test fun stopsAtTheAssetBudget() {

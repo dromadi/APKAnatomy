@@ -5,6 +5,7 @@ import org.jf.dexlib2.AccessFlags
 import org.jf.dexlib2.dexbacked.DexBackedDexFile
 import org.jf.dexlib2.iface.instruction.*
 import org.jf.dexlib2.iface.reference.MethodReference
+import org.jf.dexlib2.iface.reference.StringReference
 import org.jf.dexlib2.util.ReferenceUtil
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -14,7 +15,9 @@ import kotlinx.coroutines.CancellationException
 internal data class CodeLimits(val dexBytes: Long = 16L * 1024 * 1024,
     val totalBytes: Long = 48L * 1024 * 1024, val classes: Int = 20_000,
     val methods: Int = 30_000, val visitedInstructions: Int = 500_000,
-    val displayedInstructions: Int = 30_000, val calls: Int = 40_000)
+    val displayedInstructions: Int = 30_000, val calls: Int = 40_000, val strings: Int = 50_000,
+    /** Instructions read, beyond the index, only to link strings to the methods that load them. */
+    val xrefInstructions: Int = 5_000_000)
 
 @Suppress("DEPRECATION")
 internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
@@ -31,10 +34,12 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
         // Package names are gathered from every DEX that fits the byte budget, even after the
         // class/method index is full, because SDK detection needs the whole namespace.
         val packages = sortedSetOf<String>()
+        val strings = mutableListOf<StringUse>()
         var definedClasses = 0
         var shortNamed = 0
         var indexFull = false
-        fun result() = CodeIndex(classes, methods, calls, warnings.toList(), packages.toList(), definedClasses, shortNamed)
+        var xrefVisited = 0
+        fun result() = CodeIndex(classes, methods, calls, warnings.toList(), packages.toList(), definedClasses, shortNamed, strings)
         for ((index, file) in files.withIndex()) {
             val archive = if (index == 0) "base.apk" else file.name
             checkCancelled()
@@ -64,11 +69,14 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                                 definedClasses++
                                 if (name.substringAfterLast('/').substringBefore('$').length <= 2) shortNamed++
                             }
+                            var dexHasFindings = false
                             if (traces != null) dex.stringSection.forEachIndexed { i, s ->
                                 if (i % 4096 == 0) checkCancelled()
                                 traces.scan(s, "$archive/${entry.name}")
+                                if (!dexHasFindings && traces.isInteresting(s)) dexHasFindings = true
                             }
-                            if (indexFull) continue
+                            val indexedTypes = HashSet<String>()
+                            if (!indexFull) indexDex@ run {
                             val prefix = preferredPackage?.takeIf { it.isNotBlank() }?.replace('.', '/')?.let { "L$it/" }
                             val ordered = if (prefix == null) dex.classes.asSequence() else
                                 dex.classes.asSequence().filter { it.type.startsWith(prefix) } +
@@ -76,6 +84,7 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                             classLoop@ for (cls in ordered) {
                                 checkCancelled()
                                 if (classes.size >= limits.classes) { warnings.add("Batas class tercapai; indeks hanya sebagian."); indexFull = true; break@classLoop }
+                                indexedTypes.add(cls.type)
                                 classes.add(CodeClass(cls.type, cls.superclass, cls.interfaces.toList(), archive, entry.name))
                                 for (method in cls.methods) {
                                     checkCancelled()
@@ -95,6 +104,12 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                                             if (lines.size < 120 && displayed < limits.displayedInstructions) {
                                                 lines.add(renderInstruction(offset, instruction)); displayed++
                                             } else truncated = true
+                                            if (instruction is ReferenceInstruction && instruction.reference is StringReference) {
+                                                val literal = (instruction.reference as StringReference).string
+                                                traces?.reference(literal, id)
+                                                if (strings.size < limits.strings) strings.add(StringUse(id, literal.take(300)))
+                                                else warnings.add("Batas ${limits.strings} string literal tercapai; pencarian string hanya sebagian.")
+                                            }
                                             if (instruction.opcode.name.startsWith("invoke", ignoreCase = true) && instruction is ReferenceInstruction && instruction.reference is MethodReference) {
                                                 if (calls.size < limits.calls) calls.add(MethodCall(id, ReferenceUtil.getMethodDescriptor(instruction.reference as MethodReference), offset))
                                                 else warnings.add("Batas referensi pemanggilan tercapai; Find usage hanya sebagian.")
@@ -105,6 +120,21 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                                     methods.add(CodeMethod(descriptor, cls.type, method.name, archive, entry.name,
                                         AccessFlags.getAccessFlagsForMethod(method.accessFlags).joinToString(" ") { it.toString() },
                                         implementation != null, lines, count, truncated))
+                                }
+                            }
+                            }
+                            // Strings found in the pools should lead back to code even when the index is full.
+                            // A DEX can only load strings from its own pool, so pools without findings are skipped.
+                            if (traces != null && dexHasFindings) xref@ for (cls in dex.classes) {
+                                if (cls.type in indexedTypes) continue
+                                for (method in cls.methods) {
+                                    val implementation = method.implementation ?: continue
+                                    val id = "$archive:${entry.name}:${ReferenceUtil.getMethodDescriptor(method)}"
+                                    for (instruction in implementation.instructions) {
+                                        if (++xrefVisited > limits.xrefInstructions) { warnings.add("Batas pemindaian referensi string tercapai; tautan \"Dipakai di\" hanya sebagian."); break@xref }
+                                        if (xrefVisited % 4096 == 0) checkCancelled()
+                                        if (instruction is ReferenceInstruction && instruction.reference is StringReference) traces.reference((instruction.reference as StringReference).string, id)
+                                    }
                                 }
                             }
                         } catch (cancelled: CancellationException) { throw cancelled }

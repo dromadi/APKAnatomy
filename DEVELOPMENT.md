@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.17
+# APKAnatomy 0.1.0-alpha.18
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -210,3 +210,13 @@ A Privasi tab, placed right after the overview, answers "what could this app lea
 - A one-paragraph summary, also on the overview, in exports and as a Banding section (new data categories and trackers are flagged).
 
 Everything comes from the APK: a bundled SDK may never be called and runtime permissions may be refused, so the tab says so and points to the Play Store data-safety section for comparison. `privacyProfile()` is a pure domain function with unit tests.
+
+## Alpha.18: xref from strings to code
+
+Every host and key candidate in Jejak now lists the methods that load it with `const-string` ("Dipakai di"). Tapping one opens the method in the Kode tab; methods outside the code index are listed without a link.
+
+- Indexed methods record their string literals (`StringUse`, capped by `CodeLimits.strings`).
+- Classes outside the index get a separate pass that only looks at `const-string` instructions, bounded by `CodeLimits.xrefInstructions` and skipped for DEX files whose string pool had no finding. `TraceCollector.reference` is a hash lookup against the strings that produced findings, so it never adds new ones.
+- The Kode tab gains a String mode that searches string literals (minimum two characters) and shows the method that loads each one.
+
+On the F-Droid client all 32 hosts link to at least one method; the extra pass costs about 0.5 s warm on that APK.

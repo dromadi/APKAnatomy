@@ -34,6 +34,9 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
     val tabs = listOf("Ringkasan", "Privasi", "Teknologi", "Komponen", "Izin", "Kemampuan", "Isi APK", "Kode", "Manifest", "DNA", "Kulit", "Jejak") + listOfNotNull(baseline?.let { "Banding" })
     // The Banding tab disappears when the baseline is cleared.
     val tab = selectedTab.coerceAtMost(tabs.lastIndex)
+    // A method to open in the Kode tab, set when another tab links to code.
+    var pendingMethod by remember(report) { mutableStateOf<String?>(null) }
+    val openMethod: (String) -> Unit = { id -> pendingMethod = id; selectedTab = tabs.indexOf("Kode") }
     Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val icon = remember(report.iconPng) {
             report.iconPng?.let { bytes -> android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
@@ -59,11 +62,11 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
             "Izin" -> PermissionsScreen(report)
             "Kemampuan" -> CapabilitiesScreen(report.capabilities)
             "Isi APK" -> ArchiveBrowser(report.structure, loadPreview)
-            "Kode" -> CodeExplorer(report.code)
+            "Kode" -> CodeExplorer(report.code, pendingMethod) { pendingMethod = null }
             "Manifest" -> ManifestScreen(report)
             "DNA" -> DnaScreen(report)
             "Kulit" -> SkinScreen(report)
-            "Jejak" -> TracesScreen(report.traces)
+            "Jejak" -> TracesScreen(report.traces, report.code.methods.mapTo(HashSet()) { it.id }, openMethod)
             "Banding" -> baseline?.let { CompareScreen(it, report, clearBaseline) }
         }
     }
@@ -436,7 +439,7 @@ private fun CapabilitiesScreen(caps: Capabilities) {
 }
 
 @Composable
-private fun TracesScreen(traces: TraceReport) {
+private fun TracesScreen(traces: TraceReport, indexed: Set<String>, openMethod: (String) -> Unit) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item {
             LessonCard("Pelajari jejak", "String di DEX, resource, meta-data manifest, dan file assets/res/raw dipindai untuk alamat server dan string yang mirip kunci atau token. " +
@@ -446,6 +449,7 @@ private fun TracesScreen(traces: TraceReport) {
         if (traces.secrets.isEmpty()) item { Text("Tidak ada string yang cocok dengan pola kunci atau token yang dikenali.", style = MaterialTheme.typography.bodyMedium) }
         items(traces.secrets) { secret ->
             NoteCard(SecurityNote(secret.level, "${secret.type}: ${secret.masked}", secret.lesson + "\nDitemukan di: " + secret.locations.joinToString()))
+            UsedBy(secret.usedBy, indexed, openMethod)
         }
         item { Text("Host & endpoint (${traces.hosts.size})", style = MaterialTheme.typography.titleMedium) }
         if (traces.hosts.isEmpty()) item { Text("Tidak ada URL yang ditemukan.", style = MaterialTheme.typography.bodyMedium) }
@@ -456,8 +460,22 @@ private fun TracesScreen(traces: TraceReport) {
                 append("${host.count} kemunculan. Contoh: ").append(host.examples.joinToString())
                 append("\nDitemukan di: ").append(host.locations.joinToString())
             })
+            UsedBy(host.usedBy, indexed, openMethod)
         }
         items(traces.notes) { LessonCard("Hasil sebagian", it) }
+    }
+}
+
+/** Links to the methods that load a string, opening them in the Kode tab; methods outside the code index are listed without a link. */
+@Composable
+private fun UsedBy(methodIds: List<String>, indexed: Set<String>, openMethod: (String) -> Unit) {
+    if (methodIds.isEmpty()) return
+    Column(Modifier.padding(start = 8.dp)) {
+        Text("Dipakai di (const-string):", style = MaterialTheme.typography.labelMedium)
+        methodIds.forEach { id ->
+            if (id in indexed) TextButton(onClick = { openMethod(id) }) { Text("→ ${prettyMethod(id)}", style = MaterialTheme.typography.bodySmall) }
+            else Text("${prettyMethod(id)} (di luar indeks kode)", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+        }
     }
 }
 

@@ -37,6 +37,8 @@ internal fun ComposeContentTestRule.scrollToText(text: String) {
 
 internal fun ComposeContentTestRule.shot(name: String) = onRoot().captureRoboImage("build/outputs/roborazzi/$name.png")
 
+internal const val CHECKOUT = "base.apk:classes.dex:Lid/contoh/toko/net/Api;->checkout()V"
+
 /** A report with every section populated, for screenshots of busy screens. */
 internal fun richReport(): AnatomyReport {
     val filters = listOf(IntentFilterInfo(listOf("android.intent.action.MAIN"), listOf("android.intent.category.LAUNCHER")),
@@ -64,7 +66,12 @@ internal fun richReport(): AnatomyReport {
         structure = PackageStructure(archives = listOf("base.apk"), entries = entries,
             technologies = listOf(Technology("Flutter", "Runtime Flutter ditemukan.", listOf("base.apk/lib/arm64-v8a/libflutter.so"))),
             libraryVersions = mapOf("com.google.firebase:firebase-messaging" to "24.1.0", "androidx.core:core" to "1.15.0")),
-        code = CodeIndex(definedClasses = 18_000, shortNamedClasses = 9_500),
+        code = CodeIndex(
+            classes = listOf(CodeClass("Lid/contoh/toko/net/Api;", "Ljava/lang/Object;", emptyList(), "base.apk", "classes.dex")),
+            methods = listOf(CodeMethod(CHECKOUT.substringAfter("classes.dex:"), "Lid/contoh/toko/net/Api;", "checkout", "base.apk", "classes.dex",
+                "public static", true, listOf("0x0  const-string v0, \"https://api.contoh.id/v2/checkout\"", "0x2  return-void"), 2, false)),
+            strings = listOf(StringUse(CHECKOUT, "https://api.contoh.id/v2/checkout")),
+            definedClasses = 18_000, shortNamedClasses = 9_500),
         manifestXml = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<manifest\n    package=\"id.contoh.toko\">\n    <application\n        android:label=\"@string/app_name\" />\n</manifest>",
         signing = SigningReport(setOf(SignatureScheme.V1, SignatureScheme.V2, SignatureScheme.V3), listOf(cert),
             otherBlocks = listOf("Metadata dependensi dari Android Gradle Plugin (terenkripsi, untuk Google Play).")),
@@ -87,6 +94,8 @@ internal fun richReport(): AnatomyReport {
             extractNativeLibs = false),
         traces = TraceCollector().apply {
             scan("https://api.contoh.id/v2/checkout", "base.apk/classes.dex")
+            reference("https://api.contoh.id/v2/checkout", CHECKOUT)
+            reference("https://api.contoh.id/v2/checkout", "base.apk:classes2.dex:Lokhttp3/internal/Probe;->run()V")
             scan("http://10.0.2.2:8080/debug", "base.apk/classes2.dex")
             scan("https://toko-contoh.firebaseio.com", "res: string/firebase_database_url")
             scan("AI" + "za" + "SyB_contohKunciPalsu_1234567890abcde", "res: string/google_api_key")

@@ -5,10 +5,14 @@ data class EndpointHost(
     val host: String, val service: String?, val cleartext: Boolean, val local: Boolean,
     /** Up to a few example URLs without query, fragment or credentials. */
     val examples: List<String>, val locations: List<String>, val count: Int,
+    /** IDs of indexed methods that load a string pointing to this host (const-string). */
+    val usedBy: List<String> = emptyList(),
 )
 
 /** A string that looks like a key or token. Only a masked form is ever stored. */
-data class SecretFinding(val type: String, val level: NoteLevel, val lesson: String, val masked: String, val locations: List<String>)
+data class SecretFinding(val type: String, val level: NoteLevel, val lesson: String, val masked: String, val locations: List<String>,
+    /** IDs of indexed methods that load the value (const-string). */
+    val usedBy: List<String> = emptyList())
 
 data class TraceReport(
     val hosts: List<EndpointHost> = emptyList(),
@@ -78,39 +82,63 @@ fun sanitizeUrl(url: String): String {
  * without limit. Matches are hints for study: a key may be inactive, restricted or a test value.
  */
 class TraceCollector(private val maxHosts: Int = 1_000, private val maxSecrets: Int = 200, private val maxLocations: Int = 5) {
-    private class HostAcc(val host: String) { var cleartext = false; val examples = linkedSetOf<String>(); val locations = linkedSetOf<String>(); var count = 0 }
-    private class SecretAcc(val rule: SecretRule, val masked: String) { val locations = linkedSetOf<String>() }
+    private class HostAcc(val host: String) { var cleartext = false; val examples = linkedSetOf<String>(); val locations = linkedSetOf<String>(); var count = 0; val usedBy = linkedSetOf<String>() }
+    private class SecretAcc(val rule: SecretRule, val masked: String) { val locations = linkedSetOf<String>(); val usedBy = linkedSetOf<String>() }
     private val hosts = LinkedHashMap<String, HostAcc>()
     private val secrets = LinkedHashMap<Pair<String, String>, SecretAcc>()
     private var scanned = 0
     private val notes = linkedSetOf<String>()
+    // Strings that yielded a host or secret; reference() only looks at these, so the xref pass is a hash lookup per const-string.
+    private val interesting = HashSet<String>()
 
     fun scan(text: String, location: String) {
         scanned++
         // Nothing we look for is shorter than "http://a.b"; type descriptors (Lcom/x/Y;) are a large share of DEX strings.
         if (text.length < 10 || text[0] == 'L' && text.endsWith(';') && ' ' !in text) return
-        if ("://" in text) for (match in URL.findAll(text)) addUrl(match.value, location)
+        if ("://" in text) for (match in URL.findAll(text)) if (addUrl(match.value, location)) interesting += text
         for (rule in secretRules) {
             if (rule.hints.none { it in text }) continue
             for (match in rule.pattern.findAll(text)) {
                 if (secrets.size >= maxSecrets) { notes += "Batas $maxSecrets kandidat rahasia tercapai."; return }
+                interesting += text
                 val acc = secrets.getOrPut(rule.type to match.value) { SecretAcc(rule, maskSecret(match.value, rule.keep)) }
                 if (acc.locations.size < maxLocations) acc.locations += location
             }
         }
     }
 
-    private fun addUrl(url: String, location: String) {
-        val clean = sanitizeUrl(url)
+    /**
+     * Records that [methodId] loads [text] (a const-string). Only hosts and secrets already found
+     * in the string pools are linked; nothing new is added here.
+     */
+    fun reference(text: String, methodId: String) {
+        if (text !in interesting) return
+        if ("://" in text) for (match in URL.findAll(text)) hostOf(sanitizeUrl(match.value))?.let { hosts[it] }?.let { if (it.usedBy.size < maxLocations) it.usedBy += methodId }
+        for (rule in secretRules) {
+            if (rule.hints.none { it in text }) continue
+            for (match in rule.pattern.findAll(text)) secrets[rule.type to match.value]?.let { if (it.usedBy.size < maxLocations) it.usedBy += methodId }
+        }
+    }
+
+    private fun hostOf(clean: String): String? {
         val host = clean.substringAfter("://").substringBefore('/').substringAfterLast('@').substringBefore(':').lowercase()
-        if (host.length < 3 || '.' !in host && host != "localhost" || host in IGNORED_HOSTS) return
-        if (host !in hosts && hosts.size >= maxHosts) { notes += "Batas $maxHosts host tercapai."; return }
+        return if (host.length < 3 || '.' !in host && host != "localhost" || host in IGNORED_HOSTS) null else host
+    }
+
+    private fun addUrl(url: String, location: String): Boolean {
+        val clean = sanitizeUrl(url)
+        val host = hostOf(clean) ?: return false
+        if (host !in hosts && hosts.size >= maxHosts) { notes += "Batas $maxHosts host tercapai."; return false }
         val acc = hosts.getOrPut(host) { HostAcc(host) }
         acc.count++
         if (clean.startsWith("http://", ignoreCase = true) || clean.startsWith("ws://", ignoreCase = true)) acc.cleartext = true
         if (acc.examples.size < 3) acc.examples += clean
         if (acc.locations.size < maxLocations) acc.locations += location
+        return true
     }
+
+    /** True when [text] yielded a host or secret during [scan]. */
+    fun isInteresting(text: String): Boolean = text in interesting
 
     /** Records a limitation of the scan (e.g. a size cap) to show with the results. */
     fun note(text: String) { notes += text }
@@ -118,9 +146,9 @@ class TraceCollector(private val maxHosts: Int = 1_000, private val maxSecrets: 
     fun result(): TraceReport = TraceReport(
         hosts = hosts.values.map { h ->
             EndpointHost(h.host, SERVICES.firstOrNull { (suffix, _) -> h.host == suffix || h.host.endsWith(".$suffix") }?.second,
-                h.cleartext, isLocal(h.host), h.examples.toList(), h.locations.toList(), h.count)
+                h.cleartext, isLocal(h.host), h.examples.toList(), h.locations.toList(), h.count, h.usedBy.toList())
         }.sortedWith(compareBy({ it.service == null }, { it.host })),
-        secrets = secrets.values.map { SecretFinding(it.rule.type, it.rule.level, it.rule.lesson, it.masked, it.locations.toList()) }
+        secrets = secrets.values.map { SecretFinding(it.rule.type, it.rule.level, it.rule.lesson, it.masked, it.locations.toList(), it.usedBy.toList()) }
             .sortedWith(compareBy({ it.level != NoteLevel.PERHATIAN }, { it.type })),
         scannedStrings = scanned,
         notes = notes.toList(),

@@ -8,6 +8,8 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import com.apkanatomy.domain.FilePreview
 import org.junit.Rule
@@ -36,7 +38,7 @@ class RichReportScreenTest {
         show()
         compose.shot("rich_overview")
         for ((tab, marker) in listOf("Privasi" to "Pelacak (1)", "Teknologi" to "Google AdMob", "Komponen" to "PaymentActivity", "Izin" to "SYSTEM_ALERT_WINDOW", "Kemampuan" to "TrackingService",
-            "Isi APK" to "classes.dex", "Kode" to "Cari class", "Manifest" to "android:label", "DNA" to "Catatan audit", "Kulit" to "Kode DEX", "Jejak" to "Midtrans server key")) {
+            "Isi APK" to "classes.dex", "Kode" to "Mulai menelusuri", "Manifest" to "android:label", "DNA" to "Catatan audit", "Kulit" to "Kode DEX", "Jejak" to "Midtrans server key")) {
             compose.openTab(tab)
             compose.onNodeWithText(marker, substring = true, useUnmergedTree = true).assertExists()
             compose.shot("rich_${tab.lowercase().replace(' ', '_')}")
@@ -49,6 +51,27 @@ class RichReportScreenTest {
         compose.scrollToText("JNI: jembatan")
         compose.onNodeWithText("Belum siap 16 KB page size", substring = true).assertExists()
         compose.shot("rich_native")
+    }
+
+    @Test fun jejakLinksToTheMethodThatLoadsAUrl() {
+        show()
+        compose.openTab("Jejak")
+        compose.scrollToText("api.contoh.id")
+        compose.onNodeWithText("okhttp3.internal.Probe.run() (di luar indeks kode)").assertExists()
+        compose.onNodeWithText("→ id.contoh.toko.net.Api.checkout()").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Instruksi").assertExists()
+        compose.onNodeWithText("const-string v0", substring = true).assertExists()
+        compose.shot("rich_xref_method")
+    }
+
+    @Test fun codeTabSearchesStringLiterals() {
+        show()
+        compose.openTab("Kode")
+        compose.onNodeWithText("String").performClick()
+        compose.onNode(androidx.compose.ui.test.hasSetTextAction()).performTextInput("checkout")
+        compose.onNodeWithText("Dimuat oleh id.contoh.toko.net.Api.checkout()").assertExists()
+        compose.shot("rich_string_search")
     }
 
     @Test fun darkThemeRenders() {

@@ -52,6 +52,18 @@ class TraceCollectorTest {
         assertFalse(report.hosts.single().examples.single().contains("AIza"))
     }
 
+    @Test fun linksMethodsThatLoadKnownHostsAndSecrets() {
+        val collector = TraceCollector()
+        collector.scan("https://api.contoh.id/v1/login?x=1", "classes.dex")
+        collector.scan(awsKey, "classes.dex")
+        collector.reference("https://api.contoh.id/v1/login?x=1", "m1")
+        collector.reference("https://unknown.contoh.id/", "m2") // not in the string pool: nothing is added
+        collector.reference(awsKey, "m3")
+        val report = collector.result()
+        assertEquals(listOf("m1"), report.hosts.single().usedBy)
+        assertEquals(listOf("m3"), report.secrets.single().usedBy)
+    }
+
     @Test fun staysBounded() {
         val collector = TraceCollector(maxHosts = 2)
         (1..5).forEach { collector.scan("https://h$it.contoh.id/", "classes.dex") }

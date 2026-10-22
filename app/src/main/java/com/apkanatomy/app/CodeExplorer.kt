@@ -15,7 +15,7 @@ import androidx.compose.ui.unit.dp
 import com.apkanatomy.domain.*
 
 @Composable
-internal fun CodeExplorer(index: CodeIndex) {
+internal fun CodeExplorer(index: CodeIndex, openMethodId: String? = null, onOpened: () -> Unit = {}) {
     var query by rememberSaveable { mutableStateOf("") }
     var selectedClassId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedMethodId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -24,7 +24,11 @@ internal fun CodeExplorer(index: CodeIndex) {
         selectedMethodId = methodHistory.lastOrNull()
         methodHistory = methodHistory.dropLast(1)
     }
-    var searchMethods by rememberSaveable { mutableStateOf(false) }
+    // 0 = class, 1 = method, 2 = string literal
+    var mode by rememberSaveable { mutableIntStateOf(0) }
+    LaunchedEffect(openMethodId) {
+        if (openMethodId != null) { selectedClassId = null; selectedMethodId = openMethodId; onOpened() }
+    }
     val methodById = remember(index) { index.methods.associateBy { it.id } }
     val methodsByDescriptor = remember(index) { index.methods.groupBy { it.descriptor } }
     val selectedClass = remember(index, selectedClassId) { index.classes.find { it.id == selectedClassId } }
@@ -51,15 +55,25 @@ internal fun CodeExplorer(index: CodeIndex) {
         }
         return
     }
-    OutlinedTextField(query, { query = it }, label = { Text("Cari class / nama / signature method") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-    Row { Checkbox(searchMethods, { searchMethods = it }); Text("Cari method", modifier = Modifier.padding(top = 14.dp)) }
+    OutlinedTextField(query, { query = it }, label = { Text(listOf("Cari nama class", "Cari nama / signature method", "Cari isi string literal")[mode]) },
+        modifier = Modifier.fillMaxWidth(), singleLine = true)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("Class", "Method", "String").forEachIndexed { i, label -> FilterChip(selected = mode == i, onClick = { mode = i }, label = { Text(label) }) }
+    }
     val classes = remember(index, query) { index.classes.filter { it.displayName.contains(query, true) } }
     val methods = remember(index, query) { index.methods.filter { it.descriptor.contains(query, true) } }
+    val strings = remember(index, query) { if (query.length < 2) emptyList() else index.strings.filter { it.value.contains(query, true) } }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
-        item { CodeCard("Mulai menelusuri", "Cari nama fitur, class, atau method. Buka method untuk melihat instruksi DEX, pemanggilan keluar, dan Find usage. Pencarian ini mencari nama/signature, belum seluruh isi kode atau string.") }
+        item { CodeCard("Mulai menelusuri", "Cari nama class, signature method, atau string literal (mis. URL, pesan error, nama endpoint). Buka method untuk melihat instruksi DEX, pemanggilan keluar, dan Find usage.") }
         item { Text("${index.classes.size} class · ${index.methods.size} method · ${index.calls.size} pemanggilan langsung. Hasil bukan kode Java hasil dekompilasi.", style = MaterialTheme.typography.bodySmall) }
         items(index.warnings) { CodeCard("Cakupan terbatas", it) }
-        if (searchMethods) {
+        if (mode == 2) {
+            item { Text(if (query.length < 2) "Ketik minimal 2 huruf untuk mencari di ${index.strings.size} string literal." else "${strings.size} string literal cocok", style = MaterialTheme.typography.bodyMedium) }
+            items(strings.take(250).withIndex().toList(), key = { "s${it.index}" }) { (_, use) ->
+                CodeCard(use.value, "Dimuat oleh ${prettyMethod(use.methodId)}", onClick = { selectedMethodId = use.methodId })
+            }
+            if (strings.size > 250) item { Text("Menampilkan 250 hasil; persempit pencarian.") }
+        } else if (mode == 1) {
             item { Text("${methods.size} hasil method") }
             items(methods.take(250), key = { it.id }) { method -> CodeCard(method.descriptor, "${method.archive}/${method.dex}", onClick = { selectedMethodId = method.id }) }
             if (methods.size > 250) item { Text("Menampilkan 250 hasil; persempit pencarian.") }
