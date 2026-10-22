@@ -105,7 +105,7 @@ private fun TechnologyScreen(report: AnatomyReport) {
         item { Text("SDK & library pihak ketiga", style = MaterialTheme.typography.titleMedium) }
         item { Text("Dikenali dari nama package di DEX. Kecocokan berarti library ikut dibundel, belum tentu aktif dipakai. R8 dapat mengganti nama package, jadi library yang tidak muncul belum tentu tidak ada.", style = MaterialTheme.typography.bodySmall) }
         obfuscationHint(report.code)?.let { hint -> item { LessonCard("Obfuskasi", hint) } }
-        if (report.sdks.isEmpty()) item { Text("Tidak ada SDK yang cocok dengan aturan saat ini.") }
+        if (report.sdks.isEmpty()) item { Text("Tidak ada SDK yang cocok dengan aturan saat ini.", style = MaterialTheme.typography.bodyMedium) }
         report.sdks.groupBy { it.category }.forEach { (category, sdks) ->
             item(key = "sdk-category:$category") { Text(category, style = MaterialTheme.typography.titleSmall) }
             items(sdks, key = { "sdk:${it.name}" }) { sdk ->
@@ -119,21 +119,40 @@ private fun TechnologyScreen(report: AnatomyReport) {
                 s.libraryVersions.entries.take(200).joinToString("\n") { (artifact, version) -> "$artifact $version" } +
                 (if (s.libraryVersions.size > 200) "\n… dan ${s.libraryVersions.size - 200} lainnya" else ""))
         }
-        if (s.technologies.isEmpty()) item { Text("Tidak ada penanda teknologi yang dikenali oleh aturan saat ini.") }
+        if (s.technologies.isEmpty()) item { Text("Tidak ada penanda teknologi yang dikenali oleh aturan saat ini.", style = MaterialTheme.typography.bodyMedium) }
         items(s.technologies, key = { it.name }) { technology ->
             LessonCard(technology.name, technology.explanation + "\n\nBukti:\n" + technology.evidence.joinToString("\n"))
         }
         item { Text("DEX: bytecode Android", style = MaterialTheme.typography.titleMedium) }
         item { Text("Referensi method mencakup method aplikasi dan dependensi. Penjumlahan lintas DEX bukan jumlah method unik. Header tidak membuktikan perilaku kode.", style = MaterialTheme.typography.bodySmall) }
-        if (s.dex.isEmpty()) item { Text("Tidak ada classes*.dex yang ditemukan pada arsip terbaca.") }
+        if (s.dex.isEmpty()) item { Text("Tidak ada classes*.dex yang ditemukan pada arsip terbaca.", style = MaterialTheme.typography.bodyMedium) }
         items(s.dex, key = { "${it.archive}:${it.path}" }) { dex ->
             LessonCard("${dex.archive}/${dex.path}", dex.note ?: "DEX ${dex.version}\n${dex.classDefinitions} definisi class\n${dex.methodReferences} referensi method")
         }
         item { Text("Native library & ABI", style = MaterialTheme.typography.titleMedium) }
         item { Text("ABI menunjukkan arsitektur CPU tujuan library, bukan CPU yang pasti sedang digunakan. Daftar ini menggabungkan paket utama dan split yang terbaca.", style = MaterialTheme.typography.bodySmall) }
-        if (s.libraries.isEmpty()) item { Text("Tidak ada library native di lib/<ABI>/*.so pada arsip terbaca.") }
-        items(s.libraries, key = { "${it.archive}:${it.path}" }) { lib ->
-            LessonCard(lib.path.substringAfterLast('/'), "ABI: ${lib.abi} · ${formatSize(lib.size)}\n${lib.archive}/${lib.path}")
+        report.native.pageSizeNote()?.let { note -> item { NoteCard(note) } }
+        if (report.native.libraries.isEmpty()) item { Text("Tidak ada library native di lib/<ABI>/*.so pada arsip terbaca.", style = MaterialTheme.typography.bodyMedium) }
+        else item {
+            val declared = remember(report.code) { report.code.methods.count { "native" in it.access } }
+            val exported = report.native.libraries.sumOf { it.jniMethods.size }
+            LessonCard("JNI: jembatan Java ↔ native", "Metode Java bertanda native dijalankan oleh kode C/C++. Pendaftarannya lewat nama simbol Java_paket_Kelas_metode (terlihat di bawah) atau lewat RegisterNatives di dalam JNI_OnLoad (tidak terlihat dari simbol).\n" +
+                "$declared metode native terlihat di indeks kode · $exported fungsi JNI diekspor dengan nama.")
+        }
+        items(report.native.libraries, key = { "${it.archive}:${it.path}" }) { lib ->
+            LessonCard("${lib.abi}/${lib.path.substringAfterLast('/')}", buildString {
+                append(lib.machine?.let { "$it · ${lib.bits}-bit" } ?: "ELF tidak terbaca").append(" · ").append(formatSize(lib.size))
+                lib.minLoadAlign?.let { append("\nSegmen LOAD rata ${it / 1024} KB").append(if (it >= 16_384) " ✓ siap 16 KB" else if (lib.is64Bit) " ✗ belum 16 KB" else " (32-bit, tidak wajib 16 KB)") }
+                if (lib.stored) append("\nTersimpan tanpa kompresi, offset ZIP ${lib.zipDataOffset}").append(if (lib.zipAligned16k == true) " (rata 16 KB)" else " (tidak rata 16 KB)")
+                lib.soname?.let { append("\nSONAME: $it") }
+                if (lib.needed.isNotEmpty()) append("\nBergantung pada: ").append(lib.needed.joinToString())
+                if (lib.hasJniOnLoad) append("\nPunya JNI_OnLoad: dapat mendaftarkan metode native sendiri saat dimuat.")
+                if (lib.jniMethods.isNotEmpty()) append("\nMetode JNI: ").append(lib.jniMethods.take(12).joinToString()).append(if (lib.jniMethods.size > 12) " … (+${lib.jniMethods.size - 12})" else "")
+                if (lib.hasDebugInfo) append("\nMembawa info debug (.debug_*): ukuran lebih besar dan lebih mudah dianalisis.")
+                else if (lib.hasSymbolTable) append("\nTidak di-strip: tabel simbol lengkap (.symtab) ikut terbawa.")
+                lib.note?.let { append("\n").append(it) }
+                append("\n").append(lib.archive)
+            })
         }
         items(s.warnings) { LessonCard("Hasil sebagian", it) }
     }
@@ -158,7 +177,7 @@ private fun ComponentsScreen(report: AnatomyReport) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
         item { LessonCard("Pelajari komponen", if (kind >= 0) componentLesson(ComponentKind.entries[kind]) else "Activity: titik masuk layar. Service: kerja tanpa layar. Receiver: penerima broadcast. Provider: akses data melalui content URI.") }
         item { Text("${components.size} komponen. Exported membuka deklarasi akses dari aplikasi lain; izin tetap bisa membatasinya. Intent-filter menjelaskan pemicunya; referensi kode dari komponen belum ditautkan.", style = MaterialTheme.typography.bodySmall) }
-        if (components.isEmpty()) item { Text("Tidak ada komponen yang cocok.") }
+        if (components.isEmpty()) item { Text("Tidak ada komponen yang cocok.", style = MaterialTheme.typography.bodyMedium) }
         items(components, key = { "${it.kind}:${it.name}" }) { component ->
             LessonCard(component.name, "${component.kind.name} · exported=${component.exported} · enabled=${component.enabled}" +
                 (if (component in open) "\nTerbuka: aplikasi lain dapat memanggilnya tanpa izin." else "") +
@@ -179,7 +198,7 @@ private fun PermissionsScreen(report: AnatomyReport) {
             Text("$sensitive izin sensitif ditandai ⚠ dan ditampilkan lebih dulu.", style = MaterialTheme.typography.bodySmall)
         }
         item { LessonCard("Pelajari izin", "Izin memberi petunjuk kemampuan yang diminta aplikasi. Daftar ini berasal dari manifest, bukan bukti izin sudah diberikan atau kemampuan itu benar-benar digunakan.") }
-        if (report.permissions.isEmpty()) item { Text("Tidak ada izin yang diminta.") }
+        if (report.permissions.isEmpty()) item { Text("Tidak ada izin yang diminta.", style = MaterialTheme.typography.bodyMedium) }
         val sorted = report.permissions.sortedBy { sensitivePermissionLesson(it.name) == null }
         items(sorted, key = { it.name }) { permission ->
             val lesson = sensitivePermissionLesson(permission.name)
@@ -265,7 +284,7 @@ private fun DnaScreen(report: AnatomyReport) {
         }
         if (SignatureScheme.SOURCE_STAMP in signing.schemes) item { LessonCard("Source stamp: ✓ Ada", "Cap sumber dari distributor (mis. Google Play) untuk menandai asal APK.") }
         item { Text("Sertifikat penandatangan", style = MaterialTheme.typography.titleMedium) }
-        if (signing.certificates.isEmpty()) item { Text("Tidak ada sertifikat yang terbaca.") }
+        if (signing.certificates.isEmpty()) item { Text("Tidak ada sertifikat yang terbaca.", style = MaterialTheme.typography.bodyMedium) }
         items(signing.certificates, key = { it.sha256 }) { cert ->
             LessonCard(cert.subject, buildString {
                 appendLine("Ditemukan di: ${cert.foundIn.joinToString()}")
@@ -292,7 +311,7 @@ private fun SkinScreen(report: AnatomyReport) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item { LessonCard("Pelajari kulit aplikasi", "Proporsi ukuran menunjukkan ke mana \"berat\" APK pergi: kode, library native, resource, atau aset. Ukuran dihitung sebelum kompresi dari semua arsip yang terbaca; kolom ZIP menunjukkan ukuran tersimpan.") }
         item { Text("Proporsi ukuran (${formatSize(total)} sebelum kompresi)", style = MaterialTheme.typography.titleMedium) }
-        if (slices.isEmpty()) item { Text("Tidak ada entri dengan ukuran yang diketahui.") }
+        if (slices.isEmpty()) item { Text("Tidak ada entri dengan ukuran yang diketahui.", style = MaterialTheme.typography.bodyMedium) }
         items(slices, key = { it.category.name }) { slice -> SizeBar(slice, total) }
         report.resources?.let { res ->
             item(key = "resources") {
@@ -347,7 +366,7 @@ private fun CompareScreen(old: AnatomyReport, new: AnatomyReport, clearBaseline:
                 TextButton(onClick = clearBaseline) { Text("Hapus pembanding") }
             }
         }
-        if (sections.isEmpty()) item { Text("Tidak ada perbedaan yang terdeteksi.") }
+        if (sections.isEmpty()) item { Text("Tidak ada perbedaan yang terdeteksi.", style = MaterialTheme.typography.bodyMedium) }
         sections.forEach { section ->
             item(key = "diff:${section.title}") { Text(section.title, style = MaterialTheme.typography.titleMedium) }
             items(section.changes) { change ->
@@ -367,12 +386,12 @@ private fun TracesScreen(traces: TraceReport) {
                 "Ini petunjuk, bukan bukti: alamat bisa milik library, dan kunci bisa saja tidak aktif atau memang publik. Nilai rahasia hanya ditampilkan tersamar. ${traces.scannedStrings} string dipindai.")
         }
         item { Text("Kandidat kunci & token (${traces.secrets.size})", style = MaterialTheme.typography.titleMedium) }
-        if (traces.secrets.isEmpty()) item { Text("Tidak ada string yang cocok dengan pola kunci atau token yang dikenali.") }
+        if (traces.secrets.isEmpty()) item { Text("Tidak ada string yang cocok dengan pola kunci atau token yang dikenali.", style = MaterialTheme.typography.bodyMedium) }
         items(traces.secrets) { secret ->
             NoteCard(SecurityNote(secret.level, "${secret.type}: ${secret.masked}", secret.lesson + "\nDitemukan di: " + secret.locations.joinToString()))
         }
         item { Text("Host & endpoint (${traces.hosts.size})", style = MaterialTheme.typography.titleMedium) }
-        if (traces.hosts.isEmpty()) item { Text("Tidak ada URL yang ditemukan.") }
+        if (traces.hosts.isEmpty()) item { Text("Tidak ada URL yang ditemukan.", style = MaterialTheme.typography.bodyMedium) }
         items(traces.hosts, key = { "host:${it.host}" }) { host ->
             LessonCard(host.host + (host.service?.let { " · $it" } ?: ""), buildString {
                 if (host.local) append("Alamat lokal/jaringan pengembangan; sering sisa saat development.\n")
@@ -434,7 +453,7 @@ private fun ArchiveBrowser(s: PackageStructure, loadPreview: suspend (ArchiveEnt
                 "Isi: ${formatSize(entry.size)} · di ZIP: ${formatSize(entry.compressedSize)}", onClick = { selected = entry })
         }
         if (files.size > 250) item { Text("Menampilkan 250 dari ${files.size} file. Persempit pencarian untuk menemukan file lain.") }
-        if (entries.isEmpty()) item { Text("Tidak ada file yang cocok pada cakupan ini.") }
+        if (entries.isEmpty()) item { Text("Tidak ada file yang cocok pada cakupan ini.", style = MaterialTheme.typography.bodyMedium) }
         items(s.warnings) { LessonCard("Hasil sebagian", it) }
     }
     selected?.let { entry ->

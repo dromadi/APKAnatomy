@@ -79,6 +79,8 @@ fun compareReports(old: AnatomyReport, new: AnatomyReport, now: Long): List<Diff
             if (o != n && kotlin.math.abs(n - o) * 100 > maxOf(o, n)) add(Change(ChangeKind.BERUBAH, "${category.label}: ${mib(o)} → ${mib(n)}"))
         }
         addAll(setDiff(old.structure.libraries.map { it.abi }.toSet(), new.structure.libraries.map { it.abi }.toSet(), { "ABI $it" }))
+        changed("Kesiapan 16 KB", old.native.pageSizeNote()?.title, new.native.pageSizeNote()?.title,
+            attention = new.native.pageSizeNote()?.level == NoteLevel.PERHATIAN)?.let(::add)
     }),
 ).filter { it.changes.isNotEmpty() }
 

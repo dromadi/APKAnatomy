@@ -42,6 +42,7 @@ data class AnatomyReport(
     val networkSecurity: NetworkSecurityConfig? = null,
     val resources: ResourceSummary? = null,
     val traces: TraceReport = TraceReport(),
+    val native: NativeReport = NativeReport(),
 )
 data class ResourceSummary(val count: Int, val typeCounts: Map<String, Int>, val locales: List<String>, val note: String? = null)
 /**

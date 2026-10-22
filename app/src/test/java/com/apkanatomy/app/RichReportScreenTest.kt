@@ -43,6 +43,14 @@ class RichReportScreenTest {
         }
     }
 
+    @Test fun nativeSectionExplainsPageSizeAndJni() {
+        show()
+        compose.openTab("Teknologi")
+        compose.scrollToText("JNI: jembatan")
+        compose.onNodeWithText("Belum siap 16 KB page size", substring = true).assertExists()
+        compose.shot("rich_native")
+    }
+
     @Test fun darkThemeRenders() {
         show(dark = true)
         compose.openTab("DNA")

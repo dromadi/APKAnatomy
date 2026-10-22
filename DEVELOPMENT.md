@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.14
+# APKAnatomy 0.1.0-alpha.15
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -181,3 +181,13 @@ Every regex runs only after a cheap substring check, and strings shorter than te
 Test sources never contain a complete secret-shaped literal: fake keys are concatenated at runtime so secret scanners do not flag the repository.
 
 Smoke test: open Jejak for a large app with analytics or payments and check hosts, services and masked values; confirm exports never contain an unmasked key.
+
+## Alpha.15: native libraries and 16 KB page size
+
+Every `lib/<abi>/<name>.so` in base and split APKs is read (64 MiB per library, 512 MiB in total) by a bounds-checked ELF reader for 32- and 64-bit little-endian files: machine, LOAD segment alignment, SONAME and DT_NEEDED dependencies (through the dynamic section and the LOAD mapping), exported `Java_*` symbols and `JNI_OnLoad` from .dynsym, and whether .symtab or .debug_* sections ship. JNI symbols are demangled (`_1`, `_2`, `_3`, `_0xxxx` escapes and the `__signature` suffix). The data offset of each entry comes from the ZIP central directory and local headers.
+
+Readiness for 16 KB page-size devices is judged for 64-bit libraries only: LOAD segments must be aligned to at least 16 KB, and when the package manager reports extractNativeLibs=false (libraries loaded straight from the APK) the stored entry must start at a 16 KB multiple. The Teknologi tab shows the verdict naming each failing library and the reason, a JNI card (native methods seen in the code index versus statically exported functions; the rest are registered through RegisterNatives in JNI_OnLoad), and a card per library. The verdict is part of exports and the Banding diff.
+
+Fixtures (`data/src/test/resources/elf`): native.c built with clang 18 and lld for android26 as arm64 with max-page-size 4096 and 16384, armv7, and an unstripped arm64 build, plus APKs aligned with `zipalign -P 16` and `zipalign -p`. Libraries are stored as `.so.bin` because AGP drops `*.so` from unit-test resources. Expected values match readelf and `zipalign -c -P 16`; the reader also matched readelf on a 32 MB real-world library (libLLVM_android.so from build-tools).
+
+Smoke test: open Teknologi for a Flutter or game app and check the 16 KB verdict against `zipalign -c -P 16` and `readelf -l`.

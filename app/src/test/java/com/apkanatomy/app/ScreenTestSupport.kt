@@ -75,6 +75,12 @@ internal fun richReport(): AnatomyReport {
         networkSecurity = NetworkSecurityConfig("res/8G.xml", base = NscScope(cleartextPermitted = false, trustAnchors = listOf("system")),
             domains = listOf(NscScope(listOf("*.api.contoh.id"), pins = 2, pinExpiration = "2030-01-01"))),
         resources = ResourceSummary(5120, mapOf("string" to 2100, "drawable" to 800, "layout" to 120), listOf("en", "in", "ms")),
+        native = NativeReport(listOf(
+            NativeLibInfo("base.apk", "lib/arm64-v8a/libflutter.so", "arm64-v8a", 11_200_000, "AArch64", 64, 4096, true, 4096, "libflutter.so",
+                listOf("libc.so", "libdl.so", "liblog.so"), emptyList(), true, false, false),
+            NativeLibInfo("base.apk", "lib/arm64-v8a/libtoko.so", "arm64-v8a", 210_000, "AArch64", 64, 16384, true, 16384, "libtoko.so",
+                listOf("libc.so"), listOf("id.contoh.toko.crypto.Native.sign", "id.contoh.toko.crypto.Native.verify"), false, true, false)),
+            extractNativeLibs = false),
         traces = TraceCollector().apply {
             scan("https://api.contoh.id/v2/checkout", "base.apk/classes.dex")
             scan("http://10.0.2.2:8080/debug", "base.apk/classes2.dex")

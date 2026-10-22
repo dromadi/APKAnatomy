@@ -53,6 +53,14 @@ fun AnatomyReport.toMarkdown(now: Long): String = buildString {
     appendLine()
     appendLine("DEX: ${structure.dex.size} file · library native: ${structure.libraries.map { it.abi }.distinct().joinToString().ifEmpty { "tidak ada" }}")
     appendLine()
+    appendLine("## Library native")
+    native.pageSizeNote()?.let { appendLine("**${it.level.name}** ${md(it.title)}: ${md(it.explanation)}") }
+    native.libraries.forEach { lib ->
+        appendLine("- `${lib.abi}/${lib.path.substringAfterLast('/')}` ${lib.machine ?: "?"} ${lib.bits ?: "?"}-bit · align ${lib.minLoadAlign ?: "?"}" +
+            (if (lib.stored) " · tersimpan, offset ${lib.zipDataOffset}" else "") + (if (lib.needed.isNotEmpty()) " · butuh ${lib.needed.joinToString()}" else "") +
+            (if (lib.jniMethods.isNotEmpty()) " · ${lib.jniMethods.size} JNI" else ""))
+    }
+    appendLine()
     appendLine("## Jejak")
     appendLine("${traces.hosts.size} host, ${traces.secrets.size} kandidat kunci/token (nilai tersamar).")
     appendLine()
@@ -116,6 +124,10 @@ fun AnatomyReport.toJson(now: Long): String = json(mapOf(
     "technologies" to structure.technologies.map { it.name },
     "sdks" to sdks.map { mapOf("name" to it.name, "category" to it.category, "versions" to it.versions, "evidence" to it.evidence) },
     "libraryVersions" to structure.libraryVersions,
+    "native" to mapOf("extractNativeLibs" to native.extractNativeLibs, "pageSize16k" to native.pageSizeNote()?.level?.name,
+        "libraries" to native.libraries.map { mapOf("archive" to it.archive, "path" to it.path, "abi" to it.abi, "machine" to it.machine, "bits" to it.bits,
+            "minLoadAlign" to it.minLoadAlign, "stored" to it.stored, "zipDataOffset" to it.zipDataOffset, "soname" to it.soname, "needed" to it.needed,
+            "jniMethods" to it.jniMethods, "jniOnLoad" to it.hasJniOnLoad, "symbolTable" to it.hasSymbolTable, "debugInfo" to it.hasDebugInfo) }),
     "traces" to mapOf(
         "hosts" to traces.hosts.map { mapOf("host" to it.host, "service" to it.service, "cleartext" to it.cleartext, "local" to it.local,
             "examples" to it.examples, "locations" to it.locations, "count" to it.count) },

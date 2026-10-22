@@ -120,7 +120,9 @@ class AnatomyRepository(private val context: Context) {
         val context = coroutineContext
         TraceSources.scanResources(table, traces)
         TraceSources.scanManifest(manifest.application, traces)
-        TraceSources.scanFiles(files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap(), traces) { context.ensureActive() }
+        val labeled = files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap()
+        TraceSources.scanFiles(labeled, traces) { context.ensureActive() }
+        val native = NativeScanner().scan(labeled, info.applicationInfo?.let { it.flags and ApplicationInfo.FLAG_EXTRACT_NATIVE_LIBS != 0 }) { context.ensureActive() }
         val (networkSecurity, nscNote) = ResourceReader.networkSecurityConfig(baseApk, manifest.application, table)
         val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
         val components = buildList {
@@ -147,7 +149,7 @@ class AnatomyRepository(private val context: Context) {
                 AppPermission(name, protection)
             }, structure, code, manifestXml = manifest.xml, manifestNote = manifest.note,
             signing = signing, security = securityFlags(app, manifest), sdks = detectSdks(code.packages, structure.libraryVersions),
-            iconPng = iconPng(app), networkSecurity = networkSecurity, traces = traces.result(),
+            iconPng = iconPng(app), networkSecurity = networkSecurity, traces = traces.result(), native = native,
             resources = (table?.let { ResourceSummary(it.resourceCount, it.typeCounts().entries.sortedByDescending { e -> e.value }.associate { e -> e.key to e.value }, it.locales().toList(), nscNote) }
                 ?: tableNote?.let { ResourceSummary(0, emptyMap(), emptyList(), listOfNotNull(it, nscNote).joinToString(" ")) }))
     }
