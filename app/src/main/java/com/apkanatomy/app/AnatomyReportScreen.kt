@@ -343,7 +343,48 @@ private fun ComponentsScreen(report: AnatomyReport, openClass: (String) -> Unit)
             if (cls != null) TextButton(onClick = { openClass(cls.id) }) { Text("Buka kode ${component.name.substringAfterLast('.')} →") }
             else Text(if (report.code.warnings.isEmpty()) "Class ini tidak ada di DEX yang terbaca; bisa berasal dari split lain atau framework." else "Class ini tidak ada di indeks kode (indeks dibatasi atau dari riwayat).",
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp))
+            TryComponent(report.packageName, component)
         }
+    }
+}
+
+/** Starts an intent for [TryComponent]; tests replace it to see the intent without leaving the screen. */
+internal val LocalIntentLauncher = staticCompositionLocalOf<((android.content.Context, android.content.Intent) -> Unit)> { { context, intent -> context.startActivity(intent) } }
+
+/**
+ * Buttons that start an exported activity, or open one of its deep links, the way another app could.
+ * The result (opened, refused by a permission, not installed) is explained under the buttons.
+ */
+@Composable
+private fun TryComponent(packageName: String, component: AppComponent) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val launcher = LocalIntentLauncher.current
+    var result by remember(component.name) { mutableStateOf<String?>(null) }
+    val uris = remember(component) { component.intentFilters.flatMap { it.exampleUris() }.distinct().take(4) }
+    val canStart = component.kind == ComponentKind.ACTIVITY && component.exported && component.enabled
+    if (!canStart && uris.isEmpty()) return
+    fun launch(intent: android.content.Intent, what: String) {
+        result = try {
+            launcher(context, intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            "$what dibuka. Aplikasi lain dapat melakukan hal yang sama; kembali ke APKAnatomy dengan tombol kembali."
+        } catch (_: android.content.ActivityNotFoundException) {
+            "$what tidak dapat dibuka: aplikasi tidak terpasang di perangkat ini, atau tidak ada filter yang cocok."
+        } catch (e: SecurityException) {
+            "$what ditolak sistem: ${component.permission?.let { "dilindungi izin $it" } ?: "tidak boleh dipanggil dari luar"}. Ini perlindungan yang berjalan."
+        }
+    }
+    Column(Modifier.padding(start = 8.dp)) {
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (canStart) OutlinedButton(onClick = {
+                launch(android.content.Intent().setClassName(packageName, component.name), component.name.substringAfterLast('.'))
+            }) { Text("Coba buka") }
+            uris.forEach { uri ->
+                OutlinedButton(onClick = {
+                    launch(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(uri)).addCategory(android.content.Intent.CATEGORY_BROWSABLE).setPackage(packageName), uri)
+                }) { Text("Coba $uri", maxLines = 1) }
+            }
+        }
+        result?.let { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 4.dp)) }
     }
 }
 

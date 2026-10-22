@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.36
+# APKAnatomy 0.1.0-alpha.37
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -385,3 +385,13 @@ A **Belajar** tab, right after Ringkasan, walks a learner through the report in 
 8. how to read its code.
 
 Each step shows an observation written from this report's own findings (signer, launcher activity, privacy summary, UI toolkit, share of own code, top behaviour, hosts, notes needing attention, the launcher class to open), a button to the tab where it shows, and a question whose answer appears only on request. Progress ("n selesai") is kept per report while the screen lives. The overview's first card now points to the tour. `tour()` is domain code; a test checks every step names a real tab and asks a question.
+
+## Alpha.37: try components and deep links
+
+Cards in the Komponen tab can now be tried out, the way another app could:
+
+- **Coba buka** starts an exported, enabled activity by its class name.
+- **Coba <uri>** opens each deep link of the component with `ACTION_VIEW` + `BROWSABLE`, limited to the app's package. The example URIs come from `IntentFilterInfo.exampleUris()` (domain): each scheme with each host (a `*.` wildcard dropped) and the first literal path (`/produk*` → `/produk`; regex paths are skipped).
+- The outcome is explained under the buttons: opened, refused by the system (with the protecting permission when known; "this is the protection working"), or not found (the app is not installed, e.g. for a report of an APK file).
+
+Starting goes through `LocalIntentLauncher`, so the UI test captures the exact intents (action, URI, package, class) instead of leaving the screen. Smoke test on a device: open an installed app with an App Link, tap its "Coba https://…" button, and the app (or the link chooser, if the domain is not verified) should open.

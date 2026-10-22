@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import com.apkanatomy.domain.FilePreview
@@ -167,6 +168,25 @@ class RichReportScreenTest {
         compose.onNodeWithText("Pintu masuk aplikasi").assertExists()
         compose.onNodeWithText("Lihat di tab Komponen →").performClick()
         compose.onNodeWithText("Pelajari komponen").assertExists()
+    }
+
+    @Test fun componentsCanBeTriedOut() {
+        val started = mutableListOf<android.content.Intent>()
+        compose.setContent {
+            MaterialTheme {
+                androidx.compose.runtime.CompositionLocalProvider(LocalIntentLauncher provides { _, intent -> started += intent }) {
+                    androidx.compose.material3.Surface { Column(Modifier.fillMaxSize().padding(16.dp)) { AnatomyReportScreen(richReport(), { FilePreview.Unavailable("—") }) } }
+                }
+            }
+        }
+        compose.openTab("Komponen")
+        compose.onNodeWithText("Coba https://shop.example.com/produk").performScrollTo().performClick()
+        org.junit.Assert.assertEquals(android.content.Intent.ACTION_VIEW, started.single().action)
+        org.junit.Assert.assertEquals("https://shop.example.com/produk" to "id.contoh.toko", started.single().dataString to started.single().`package`)
+        compose.onAllNodes(androidx.compose.ui.test.hasText("Coba buka"))[0].performScrollTo().performClick()
+        org.junit.Assert.assertEquals("id.contoh.toko.MainActivity", started.last().component?.className)
+        compose.onAllNodes(androidx.compose.ui.test.hasText("dibuka", substring = true)).fetchSemanticsNodes().let { org.junit.Assert.assertTrue(it.isNotEmpty()) }
+        compose.shot("rich_try_component")
     }
 
     @Test fun codeTabSearchesStringLiterals() {

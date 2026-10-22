@@ -63,3 +63,17 @@ private val sensitivePermissions = mapOf(
 
 /** Why a requested permission deserves a closer look, or null for ordinary ones. */
 fun sensitivePermissionLesson(name: String): String? = sensitivePermissions[name]
+
+/**
+ * URIs that this deep-link filter should accept, for trying it out: each scheme with each host (or none) and the
+ * first literal path. Prefix paths ("/open*") lose the star; pattern paths are skipped. At most [max].
+ */
+fun IntentFilterInfo.exampleUris(max: Int = 4): List<String> {
+    if (!isDeepLink) return emptyList()
+    val path = paths.firstOrNull { !it.startsWith("pola ") && !it.startsWith("*") }?.removeSuffix("*").orEmpty()
+    return schemes.flatMap { scheme ->
+        hosts.ifEmpty { listOf("") }.map { host ->
+"$scheme://${host.removePrefix("*.")}$path"
+        }
+    }.distinct().take(max)
+}
