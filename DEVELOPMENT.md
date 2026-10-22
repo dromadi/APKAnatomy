@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.23
+# APKAnatomy 0.1.0-alpha.24
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -260,3 +260,13 @@ The method view in Kode gains a **Jalur** tab: the shortest chains of direct cal
 - When no component is reached, the partial chains up to the last caller are shown; these usually end at a framework callback, a listener or a coroutine lambda.
 
 **Index priority fix.** Testing this on F-Droid showed that none of its 36 components were in the code index. The index preferred classes under the application ID (`org.fdroid.fdroid`) while the code lives in `org.fdroid.*`, and the order only applied per DEX file, so androidx in classes.dex filled the index first. The scanner now loads every DEX first and indexes across all of them in three ranks: component classes, the app's namespaces (the package name, plus its first two segments when components live there), then libraries. F-Droid now has 33/36 components indexed (the other three are activity-aliases, which have no class). Component → code (alpha.21) and Jalur work on real apps as a result. A call path found there: `LocalRepoService.runProcess → LocalRepoManager.generateIndex → IndexV1Creator… → IndexUtils.md5`.
+
+## Alpha.24: authenticity against the installed app
+
+When an APK file or bundle is analysed and the same package is installed, the report compares the two (DNA notes, overview count, exports):
+
+- **Signer.** If any certificate matches the installed app's current signers, that is BAIK. If it matches a certificate in the installed app's key-rotation history, that is INFO (likely a genuine older build). Otherwise it is PERHATIAN: the file could be a mod, another distribution of the app (F-Droid vs Play), or fake, and Android refuses it as an update.
+- **Version.** versionCode lower than, equal to, or higher than the installed one, explaining downgrades and updates.
+- **Install source.** For both file and installed-app analyses, the installer package is named: Google Play, F-Droid, Galaxy Store, AppGallery, the package installer for sideloads, or "not recorded" for adb/system apps.
+
+Signers come from `SigningInfo` (API 28+, `apkContentsSigners` for multi-signer apps, `signingCertificateHistory` otherwise) or `GET_SIGNATURES` below 28, hashed as SHA-256 like the DNA tab. `AnatomyReport` gains `versionCode`, `installer` and `installedCopy`; the comparison logic is pure domain code with unit tests. History entries from earlier builds cannot be read after this model change and are removed with a message, as designed in alpha.19.

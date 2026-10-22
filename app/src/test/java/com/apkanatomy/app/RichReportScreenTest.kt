@@ -105,6 +105,19 @@ class RichReportScreenTest {
         compose.onNodeWithText("Lid/contoh/toko/checkout/PaymentActivity;->onCreate(Landroid/os/Bundle;)V").assertExists()
     }
 
+    @Test fun dnaWarnsWhenAFileIsSignedByAnotherKeyThanTheInstalledApp() {
+        compose.setContent {
+            MaterialTheme { androidx.compose.material3.Surface { Column(Modifier.fillMaxSize().padding(16.dp)) {
+                AnatomyReportScreen(richReport().copy(source = "File APK lokal", versionCode = 420,
+                    installedCopy = com.apkanatomy.domain.InstalledCopy("4.1.0", 410, listOf("ff00"), installer = "com.android.vending")), { FilePreview.Unavailable("—") })
+            } } }
+        }
+        compose.openTab("DNA")
+        compose.onNodeWithText("Perlu perhatian · Penandatangan berbeda dari aplikasi terpasang").assertExists()
+        compose.onNodeWithText("Info · Versi file lebih baru dari yang terpasang").assertExists()
+        compose.shot("rich_dna_authenticity")
+    }
+
     @Test fun codeTabSearchesStringLiterals() {
         show()
         compose.openTab("Kode")

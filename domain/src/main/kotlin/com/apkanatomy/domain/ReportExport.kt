@@ -125,7 +125,9 @@ private fun json(value: Any?): String = when (value) {
 /** Machine-readable report with the same scope as [toMarkdown]. */
 fun AnatomyReport.toJson(now: Long): String = json(mapOf(
     "tool" to "APKAnatomy", "generatedAt" to now,
-    "app" to mapOf("package" to packageName, "label" to label, "version" to version, "minSdk" to minSdk, "targetSdk" to targetSdk, "source" to source),
+    "app" to mapOf("package" to packageName, "label" to label, "version" to version, "minSdk" to minSdk, "targetSdk" to targetSdk, "source" to source,
+        "versionCode" to versionCode, "installer" to installer, "installedCopy" to installedCopy?.let { mapOf("versionName" to it.versionName, "versionCode" to it.versionCode,
+            "signers" to it.signers, "installer" to it.installer) }),
     "signing" to mapOf("schemes" to signing.schemes.map { it.name }, "keyRotation" to signing.keyRotation,
         "certificates" to signing.certificates.map { mapOf("subject" to it.subject, "issuer" to it.issuer, "sha256" to it.sha256, "sha1" to it.sha1,
             "notBefore" to it.notBefore, "notAfter" to it.notAfter, "keyAlgorithm" to it.keyAlgorithm, "keySize" to it.keySize, "foundIn" to it.foundIn) },

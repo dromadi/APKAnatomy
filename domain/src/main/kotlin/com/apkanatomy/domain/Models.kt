@@ -45,6 +45,12 @@ data class AnatomyReport(
     val native: NativeReport = NativeReport(),
     val capabilities: Capabilities = Capabilities(),
     val behaviors: BehaviorReport = BehaviorReport(),
+    /** versionCode from the package manager; 0 when unknown. */
+    val versionCode: Long = 0,
+    /** Package that installed the analysed app; for an installed app only. */
+    val installer: String? = null,
+    /** For an APK file: the installed copy of the same package, when there is one. */
+    val installedCopy: InstalledCopy? = null,
 ) : java.io.Serializable
 data class ResourceSummary(val count: Int, val typeCounts: Map<String, Int>, val locales: List<String>, val note: String? = null) : java.io.Serializable
 /**

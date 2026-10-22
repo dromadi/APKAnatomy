@@ -138,7 +138,7 @@ private fun networkNotes(nsc: NetworkSecurityConfig, targetSdk: Int, now: Long):
 }
 
 /** All audit notes for a report; use this rather than [securityNotes] so no input is forgotten. */
-fun AnatomyReport.notes(now: Long): List<SecurityNote> = securityNotes(security, signing, now, networkSecurity) + capabilities.securityNotes() + behaviors.securityNotes() +
+fun AnatomyReport.notes(now: Long): List<SecurityNote> = authenticityNotes() + securityNotes(security, signing, now, networkSecurity) + capabilities.securityNotes() + behaviors.securityNotes() +
     traces.secrets.filter { it.level == NoteLevel.PERHATIAN }.map { it.type }.distinct().map { type ->
         SecurityNote(NoteLevel.PERHATIAN, "Kandidat rahasia: $type", "String yang mirip $type ditemukan; lihat tab Jejak. Bila asli, kredensial ini dapat dipakai siapa pun yang membedah APK.")
     }

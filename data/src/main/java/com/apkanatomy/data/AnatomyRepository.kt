@@ -3,6 +3,7 @@ package com.apkanatomy.data
 import android.content.Context
 import android.content.pm.*
 import android.net.Uri
+import android.os.Build
 import com.apkanatomy.domain.*
 import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.coroutineContext
@@ -50,6 +51,7 @@ class AnatomyRepository(private val context: Context) {
         release()
         archives = files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap()
         report(info, "Aplikasi terinstal", files, null, onStep) { scanSigning(File(app.sourceDir), files.drop(1), File(app.sourceDir + ".idsig")) }
+            .copy(installer = installerOf(packageName))
     }
 
     /** Analyzes a single APK or a split bundle (.apks, .xapk, .apkm) picked through the Storage Access Framework. */
@@ -86,7 +88,8 @@ class AnatomyRepository(private val context: Context) {
             }
             val files = listOf(base) + splits
             val source = bundle?.let { "${it.format} (${files.size} APK)" } ?: "File APK lokal"
-            report(info, source, files, bundle?.skipped.orEmpty(), onStep) { scanSigning(base, splits, v4Signature = null) }.also {
+            report(info, source, files, bundle?.skipped.orEmpty(), onStep) { scanSigning(base, splits, v4Signature = null) }
+                .copy(installedCopy = installedCopy(info.packageName)).also {
                 retainedImport = work
                 archives = files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap()
                 kept = true
@@ -164,11 +167,37 @@ class AnatomyRepository(private val context: Context) {
                 AppPermission(name, protection)
             }, structure, code, manifestXml = manifest.xml, manifestNote = manifest.note,
             signing = signing, security = securityFlags(app, manifest), sdks = detectSdks(code.packages, structure.libraryVersions),
-            iconPng = iconPng(app), networkSecurity = networkSecurity, traces = traces.result(), native = native, behaviors = behaviors.result(),
+            iconPng = iconPng(app), networkSecurity = networkSecurity, traces = traces.result(), native = native, behaviors = behaviors.result(), versionCode = versionCodeOf(info),
             capabilities = manifest.root?.let { CapabilitiesReader.read(it, baseApk, table) } ?: Capabilities(),
             resources = (table?.let { ResourceSummary(it.resourceCount, it.typeCounts().entries.sortedByDescending { e -> e.value }.associate { e -> e.key to e.value }, it.locales().toList(), nscNote) }
                 ?: tableNote?.let { ResourceSummary(0, emptyMap(), emptyList(), listOfNotNull(it, nscNote).joinToString(" ")) }))
     }
+
+    private fun versionCodeOf(info: PackageInfo): Long = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+
+    private fun installerOf(packageName: String): String? = try {
+        if (Build.VERSION.SDK_INT >= 30) pm.getInstallSourceInfo(packageName).installingPackageName else pm.getInstallerPackageName(packageName)
+    } catch (_: Exception) { null }
+
+    /** The installed copy of [packageName] with its signing certificates, or null when it is not installed. */
+    private fun installedCopy(packageName: String): InstalledCopy? = try {
+        if (Build.VERSION.SDK_INT >= 28) {
+            val info = pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            val signing = info.signingInfo
+            val current = when {
+                signing == null -> emptyList()
+                signing.hasMultipleSigners() -> signing.apkContentsSigners.toList()
+                else -> listOfNotNull(signing.signingCertificateHistory?.lastOrNull())
+            }.map { sha256(it.toByteArray()) }
+            val past = if (signing != null && !signing.hasMultipleSigners()) signing.signingCertificateHistory.orEmpty().dropLast(1).map { sha256(it.toByteArray()) } else emptyList()
+            InstalledCopy(info.versionName ?: "—", versionCodeOf(info), current, past, installerOf(packageName))
+        } else {
+            val info = pm.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+            InstalledCopy(info.versionName ?: "—", versionCodeOf(info), info.signatures.orEmpty().map { sha256(it.toByteArray()) }, emptyList(), installerOf(packageName))
+        }
+    } catch (_: PackageManager.NameNotFoundException) { null }
+
+    private fun sha256(bytes: ByteArray) = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     private fun iconPng(app: ApplicationInfo): ByteArray? = try {
         val size = 144
