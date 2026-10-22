@@ -18,15 +18,15 @@ jobs:
           java-version: '17'
       - uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          packages: 'platform-tools platforms;android-37.0 build-tools;36.0.0'
           log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
-      - run: ./gradlew :domain:test :data:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon
+          gradle-version: '9.8.2'
+      - run: ./gradlew :core:axml:test :domain:test :data:testDebugUnitTest :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --no-daemon
       - uses: actions/upload-artifact@v4
         with:
-          name: APKAnatomy-0.1.0-alpha.3-debug
+          name: APKAnatomy-0.1.0-alpha.43-debug
           path: app/build/outputs/apk/debug/*.apk
       - uses: actions/upload-artifact@v4
         if: always()
@@ -34,5 +34,7 @@ jobs:
           name: verification-reports
           path: |
             app/build/reports/
+            app/build/outputs/roborazzi/
             domain/build/reports/
+            core/axml/build/reports/
             data/build/reports/

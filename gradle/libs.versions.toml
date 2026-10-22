@@ -1,24 +1,28 @@
 [versions]
-agp = "8.7.3"
-kotlin = "2.0.21"
-coroutines = "1.9.0"
+agp = "9.4.1"
+kotlin = "2.4.21"
+coroutines = "1.11.0"
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 [libraries]
 coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
-compose-bom = { module = "androidx.compose:compose-bom", version = "2024.12.01" }
+compose-bom = { module = "androidx.compose:compose-bom", version = "2026.09.00" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-foundation = { module = "androidx.compose.foundation:foundation" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
-activity-compose = { module = "androidx.activity:activity-compose", version = "1.9.3" }
-lifecycle-viewmodel = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version = "2.8.7" }
-lifecycle-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version = "2.8.7" }
+activity-compose = { module = "androidx.activity:activity-compose", version = "1.13.0" }
+lifecycle-viewmodel = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version = "2.11.0" }
+lifecycle-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version = "2.11.0" }
 junit = { module = "junit:junit", version = "4.13.2" }
+robolectric = { module = "org.robolectric:robolectric", version = "4.17" }
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version = "1.76.0" }
+roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version = "1.76.0" }
 
 dexlib = { module = "org.smali:dexlib2", version = "2.5.2" }
 smali = { module = "org.smali:smali", version = "2.5.2" }

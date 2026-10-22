@@ -30,6 +30,21 @@ class StructureScannerTest {
         val b = header(); "041".toByteArray().copyInto(b, 4)
         assertNotNull(parseDexHeader(b, 160, "base.apk", "classes.dex").note)
     }
+    @Test fun readsLibraryVersionFiles() {
+        val apk = File.createTempFile("versions", ".apk")
+        try {
+            ZipOutputStream(apk.outputStream()).use { zip ->
+                fun put(name: String, text: String) { zip.putNextEntry(ZipEntry(name)); zip.write(text.toByteArray()); zip.closeEntry() }
+                put("META-INF/com.google.firebase_firebase-messaging.version", "24.1.0\n")
+                put("META-INF/androidx.core_core.version", "1.13.1")
+                put("META-INF/broken.version", "1.0")
+                put("META-INF/androidx.junk_junk.version", "<script>")
+                put("assets/META-INF/a_b.version", "9")
+            }
+            val versions = StructureScanner().scan(listOf(apk)).libraryVersions
+            assertEquals(mapOf("androidx.core:core" to "1.13.1", "com.google.firebase:firebase-messaging" to "24.1.0"), versions)
+        } finally { apk.delete() }
+    }
     @Test fun hermesDoesNotAutomaticallyImplyReactNative() {
         val t = detectTechnologies(listOf(ArchiveEntry("base.apk", "lib/arm64-v8a/libhermes.so", 100, 90)))
         assertEquals(listOf("Hermes"), t.map { it.name })

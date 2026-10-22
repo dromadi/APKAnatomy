@@ -3,6 +3,7 @@ package com.apkanatomy.data
 import android.content.Context
 import android.content.pm.*
 import android.net.Uri
+import android.os.Build
 import com.apkanatomy.domain.*
 import kotlinx.coroutines.ensureActive
 import kotlin.coroutines.coroutineContext
@@ -11,9 +12,24 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.zip.ZipFile
 
+/** Steps of an analysis, in order, as shown in the progress indicator. */
+val ANALYSIS_STEPS = listOf("Menyiapkan file", "Membaca struktur arsip", "Mengindeks kode, string & perilaku", "Memeriksa tanda tangan",
+    "Membaca manifest & resource", "Memindai jejak di resource & assets", "Membaca library native")
+
 @Suppress("DEPRECATION")
 class AnatomyRepository(private val context: Context) {
     private val pm = context.packageManager
+    /** Archives of the current report by the labels StructureScanner uses, for on-demand previews. */
+    @Volatile private var archives: Map<String, File> = emptyMap()
+    /** The import folder (APK or unpacked bundle) is kept while its report is open for previews; deleted on the next analysis or [release]. */
+    @Volatile private var retainedImport: File? = null
+    /** Resource table of the current base APK, parsed on the first preview. */
+    @Volatile private var previewTable: Pair<File, com.apkanatomy.axml.ResourceTable?>? = null
+
+    init {
+        // A process killed while a report was open leaves its import behind.
+        context.cacheDir.listFiles { f -> f.name.startsWith("inspection-") }?.forEach { it.deleteRecursively() }
+    }
     private val flags = PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or
         PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS or
         PackageManager.GET_PERMISSIONS or PackageManager.MATCH_DISABLED_COMPONENTS
@@ -25,38 +41,161 @@ class AnatomyRepository(private val context: Context) {
         }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
     }
 
-    suspend fun analyzeInstalled(packageName: String): AnatomyReport = withContext(Dispatchers.IO) {
+    /** [onStep] receives the index into [ANALYSIS_STEPS] of each step as it starts. */
+    suspend fun analyzeInstalled(packageName: String, onStep: (Int) -> Unit = {}): AnatomyReport = withContext(Dispatchers.IO) {
+        onStep(0)
         val info = pm.getPackageInfo(packageName, flags)
         val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
         val paths = listOfNotNull(app.sourceDir) + app.splitSourceDirs.orEmpty().toList()
-        val context = coroutineContext
         val files = paths.map(::File)
-        report(info, "Aplikasi terinstal", StructureScanner().scan(files), DexCodeScanner().scan(files, info.packageName) { context.ensureActive() })
+        release()
+        archives = files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap()
+        report(info, "Aplikasi terinstal", files, null, onStep) { scanSigning(File(app.sourceDir), files.drop(1), File(app.sourceDir + ".idsig")) }
+            .copy(installer = installerOf(packageName))
     }
 
-    suspend fun analyzeFile(uri: Uri): AnatomyReport = withContext(Dispatchers.IO) {
-        val file = File.createTempFile("inspection-", ".apk", context.cacheDir)
+    /** Analyzes a single APK or a split bundle (.apks, .xapk, .apkm) picked through the Storage Access Framework. */
+    suspend fun analyzeFile(uri: Uri, onStep: (Int) -> Unit = {}): AnatomyReport = withContext(Dispatchers.IO) {
+        onStep(0)
+        release()
+        val work = File(context.cacheDir, "inspection-${java.util.UUID.randomUUID()}").apply { mkdirs() }
+        var kept = false
         try {
+            val imported = File(work, "import.apk")
             val input = context.contentResolver.openInputStream(uri)
                 ?: error("File tidak dapat dibuka.")
-            input.use { source -> file.outputStream().use { copyBounded(source, it, 512L * 1024 * 1024) } }
-            ZipFile(file).use { zip ->
-                val manifest = zip.getEntry("AndroidManifest.xml")
-                    ?: error("File bukan APK: manifest tidak ditemukan.")
-                require(manifest.size in 1..(8L * 1024 * 1024)) { "Ukuran manifest tidak valid." }
+            val job = coroutineContext
+            input.use { source -> imported.outputStream().use { copyBounded(source, it, 512L * 1024 * 1024) { job.ensureActive() } } }
+            val isApk = try { ZipFile(imported).use { it.getEntry("AndroidManifest.xml") != null } }
+                catch (_: java.util.zip.ZipException) { error("File bukan APK atau bundle APK (bukan arsip ZIP).") }
+            val (base, splits, bundle) = if (isApk) {
+                ZipFile(imported).use { zip ->
+                    require(zip.getEntry("AndroidManifest.xml").size in 1..(8L * 1024 * 1024)) { "Ukuran manifest tidak valid." }
+                }
+                Triple(imported, emptyList<File>(), null)
+            } else {
+                val extracted = try { BundleExtractor().extract(imported, File(work, "apks")) }
+                    catch (e: BundleExtractor.BundleException) { error(e.message ?: "Bundle tidak valid.") }
+                imported.delete()
+                Triple(extracted.base, extracted.splits, extracted)
             }
-            val info = pm.getPackageArchiveInfo(file.absolutePath, flags)
-                ?: error("APK tidak didukung atau manifest rusak. Pilih APK tunggal, bukan XAPK/APKS.")
+            val info = pm.getPackageArchiveInfo(base.absolutePath, flags)
+                ?: error("APK tidak didukung atau manifest rusak.")
             info.applicationInfo?.apply {
-                sourceDir = file.absolutePath
-                publicSourceDir = file.absolutePath
+                sourceDir = base.absolutePath
+                publicSourceDir = base.absolutePath
+                splitSourceDirs = splits.map { it.absolutePath }.toTypedArray().takeIf { it.isNotEmpty() }
             }
-            val context = coroutineContext
-            report(info, "File APK lokal", StructureScanner().scan(listOf(file)), DexCodeScanner().scan(listOf(file), info.packageName) { context.ensureActive() })
-        } finally { file.delete() }
+            val files = listOf(base) + splits
+            val source = bundle?.let { "${it.format} (${files.size} APK)" } ?: "File APK lokal"
+            report(info, source, files, bundle?.skipped.orEmpty(), onStep) { scanSigning(base, splits, v4Signature = null) }
+                .copy(installedCopy = installedCopy(info.packageName)).also {
+                retainedImport = work
+                archives = files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap()
+                kept = true
+            }
+        } finally { if (!kept) work.deleteRecursively() }
     }
 
-    private fun report(info: PackageInfo, source: String, structure: PackageStructure, code: CodeIndex): AnatomyReport {
+    /** Reads one file of the current report's archives for display. */
+    suspend fun preview(archive: String, path: String): FilePreview = withContext(Dispatchers.IO) {
+        val file = archives[archive] ?: return@withContext FilePreview.Unavailable("Arsip tidak lagi tersedia; buka ulang laporannya.")
+        // Binary XML in splits still points into the base table, so names come from base.apk.
+        val base = archives["base.apk"]
+        val table = previewTable?.takeIf { it.first == base }?.second
+            ?: base?.let { ResourceReader.read(it).first.also { t -> previewTable = base to t } }
+        PreviewReader.preview(file, path, table)
+    }
+
+    /**
+     * A quick look at every installed app (user apps only unless [includeSystem]): flags, permissions, open
+     * components, install source, and tracker SDKs from the DEX packages. [onProgress] gets (done, total, label).
+     */
+    suspend fun audit(includeSystem: Boolean, onProgress: (Int, Int, String) -> Unit = { _, _, _ -> }): List<AppAudit> = withContext(Dispatchers.IO) {
+        val job = coroutineContext
+        val apps = pm.getInstalledApplications(0).filter { includeSystem || it.flags and ApplicationInfo.FLAG_SYSTEM == 0 }
+            .sortedBy { pm.getApplicationLabel(it).toString().lowercase() }
+        apps.mapIndexedNotNull { i, app ->
+            job.ensureActive()
+            val label = pm.getApplicationLabel(app).toString()
+            onProgress(i, apps.size, label)
+            try { auditOne(app.packageName, label) { job.ensureActive() } }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { null }
+        }.also { onProgress(apps.size, apps.size, "") }
+    }
+
+    private fun auditOne(packageName: String, label: String, checkCancelled: () -> Unit): AppAudit {
+        val info = pm.getPackageInfo(packageName, flags)
+        val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
+        val files = (listOfNotNull(app.sourceDir) + app.splitSourceDirs.orEmpty()).map(::File)
+        val (packages, note) = dexPackages(files, checkCancelled = checkCancelled)
+        val trackers = detectSdks(packages, emptyMap()).mapNotNull { sdk -> trackerPurpose(sdk.name)?.let { sdk.name to it } }
+        val components = info.activities.orEmpty().map { component(it, ComponentKind.ACTIVITY, it.permission, app.enabled) } +
+            info.services.orEmpty().map { component(it, ComponentKind.SERVICE, it.permission, app.enabled) } +
+            info.receivers.orEmpty().map { component(it, ComponentKind.RECEIVER, it.permission, app.enabled) } +
+            info.providers.orEmpty().map { component(it, ComponentKind.PROVIDER, it.readPermission, app.enabled).copy(writePermission = it.writePermission) }
+        return AppAudit(packageName, label, app.flags and ApplicationInfo.FLAG_SYSTEM != 0, info.versionName ?: "—", app.targetSdkVersion,
+            debuggable = app.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0, allowBackup = app.flags and ApplicationInfo.FLAG_ALLOW_BACKUP != 0,
+            cleartextTraffic = app.flags and ApplicationInfo.FLAG_USES_CLEARTEXT_TRAFFIC != 0, installer = installerOf(packageName),
+            permissions = info.requestedPermissions.orEmpty().toList(), openComponents = components.openToAllApps().size,
+            trackers = trackers, note = note)
+    }
+
+    /** The control-flow graph of one indexed method, read again from the current report's DEX. */
+    suspend fun controlFlow(methodId: String): ControlFlow = withContext(Dispatchers.IO) {
+        try { ControlFlowReader.read(archives, methodId) }
+        catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (_: Exception) { ControlFlow(emptyList(), truncated = false, note = "Alur method ini tidak dapat dibaca.") }
+    }
+
+    /** Every resource of the current base APK, for the resource browser. */
+    suspend fun resources(): ResourceListing = withContext(Dispatchers.IO) {
+        val base = archives["base.apk"] ?: return@withContext ResourceListing(emptyList(), "Arsip tidak lagi tersedia; buka ulang laporannya.")
+        val cached = previewTable?.takeIf { it.first == base }?.second
+        if (cached != null) return@withContext ResourceReader.listing(cached, null)
+        val (table, note) = ResourceReader.read(base)
+        previewTable = base to table
+        ResourceReader.listing(table, note)
+    }
+
+    /** Forgets the current report's archives and deletes a retained import. */
+    fun release() {
+        archives = emptyMap()
+        previewTable = null
+        ControlFlowReader.clear()
+        retainedImport?.deleteRecursively()
+        retainedImport = null
+    }
+
+    /** [files] is the base APK followed by its splits; [skipped] are bundle entries that were not extracted. */
+    private suspend fun report(info: PackageInfo, source: String, files: List<File>, skipped: List<String>?,
+        onStep: (Int) -> Unit, signingOf: () -> SigningReport): AnatomyReport {
+        val context = coroutineContext
+        fun step(index: Int) { context.ensureActive(); onStep(index) }
+        step(1)
+        val structure = StructureScanner().scan(files).let { if (skipped.isNullOrEmpty()) it else it.copy(warnings = skipped + it.warnings) }
+        step(2)
+        val traces = TraceCollector()
+        val behaviors = BehaviorCollector(info.packageName)
+        val entryClasses = listOf(info.activities, info.services, info.receivers, info.providers).flatMap { it.orEmpty().map { c -> c.name } }
+        val screens = ScreenCollector(entryClasses)
+        val code = DexCodeScanner().scan(files, info.packageName, traces, behaviors, entryClasses, screens) { context.ensureActive() }
+        step(3)
+        val signing = signingOf()
+        step(4)
+        val baseApk = files.first()
+        val (table, tableNote) = ResourceReader.read(baseApk)
+        val manifest = ManifestReader.read(baseApk, table)
+        step(5)
+        TraceSources.scanResources(table, traces)
+        TraceSources.scanManifest(manifest.application, traces)
+        val labeled = files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap()
+        TraceSources.scanFiles(labeled, traces) { context.ensureActive() }
+        step(6)
+        val native = NativeScanner().scan(labeled, info.applicationInfo?.let { it.flags and ApplicationInfo.FLAG_EXTRACT_NATIVE_LIBS != 0 }, traces) { context.ensureActive() }
+        context.ensureActive()
+        val (networkSecurity, nscNote) = ResourceReader.networkSecurityConfig(baseApk, manifest.application, table)
         val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
         val components = buildList {
             info.activities.orEmpty().forEach { add(component(it, ComponentKind.ACTIVITY, it.permission, app.enabled)) }
@@ -67,6 +206,7 @@ class AnatomyRepository(private val context: Context) {
                     .copy(authority = it.authority, writePermission = it.writePermission))
             }
         }.sortedWith(compareBy({ it.kind.ordinal }, { it.name }))
+            .let { list -> manifest.root?.let(::intentFiltersByComponent)?.let { byName -> list.map { it.copy(intentFilters = byName[it.name].orEmpty()) } } ?: list }
         return AnatomyReport(info.packageName, pm.getApplicationLabel(app).toString(),
             info.versionName ?: "—", app.minSdkVersion, app.targetSdkVersion, source,
             components, info.requestedPermissions.orEmpty().map { name ->
@@ -79,8 +219,57 @@ class AnatomyRepository(private val context: Context) {
                     }
                 } catch (_: PackageManager.NameNotFoundException) { "Tidak dikenal di perangkat ini" }
                 AppPermission(name, protection)
-            }, structure, code)
+            }, structure, code, manifestXml = manifest.xml, manifestNote = manifest.note,
+            screenLinks = screens.result(),
+            signing = signing, security = securityFlags(app, manifest), sdks = detectSdks(code.packages, structure.libraryVersions),
+            iconPng = iconPng(app), networkSecurity = networkSecurity, traces = traces.result(), native = native, behaviors = behaviors.result(), versionCode = versionCodeOf(info),
+            capabilities = manifest.root?.let { CapabilitiesReader.read(it, baseApk, table) } ?: Capabilities(),
+            resources = (table?.let { ResourceSummary(it.resourceCount, it.typeCounts().entries.sortedByDescending { e -> e.value }.associate { e -> e.key to e.value }, it.locales().toList(), nscNote) }
+                ?: tableNote?.let { ResourceSummary(0, emptyMap(), emptyList(), listOfNotNull(it, nscNote).joinToString(" ")) }))
     }
+
+    private fun versionCodeOf(info: PackageInfo): Long = if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else info.versionCode.toLong()
+
+    private fun installerOf(packageName: String): String? = try {
+        if (Build.VERSION.SDK_INT >= 30) pm.getInstallSourceInfo(packageName).installingPackageName else pm.getInstallerPackageName(packageName)
+    } catch (_: Exception) { null }
+
+    /** The installed copy of [packageName] with its signing certificates, or null when it is not installed. */
+    private fun installedCopy(packageName: String): InstalledCopy? = try {
+        if (Build.VERSION.SDK_INT >= 28) {
+            val info = pm.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            val signing = info.signingInfo
+            val current = when {
+                signing == null -> emptyList()
+                signing.hasMultipleSigners() -> signing.apkContentsSigners.toList()
+                else -> listOfNotNull(signing.signingCertificateHistory?.lastOrNull())
+            }.map { sha256(it.toByteArray()) }
+            val past = if (signing != null && !signing.hasMultipleSigners()) signing.signingCertificateHistory.orEmpty().dropLast(1).map { sha256(it.toByteArray()) } else emptyList()
+            InstalledCopy(info.versionName ?: "—", versionCodeOf(info), current, past, installerOf(packageName))
+        } else {
+            val info = pm.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+            InstalledCopy(info.versionName ?: "—", versionCodeOf(info), info.signatures.orEmpty().map { sha256(it.toByteArray()) }, emptyList(), installerOf(packageName))
+        }
+    } catch (_: PackageManager.NameNotFoundException) { null }
+
+    private fun sha256(bytes: ByteArray) = java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+    private fun iconPng(app: ApplicationInfo): ByteArray? = try {
+        val size = 144
+        val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+        app.loadIcon(pm).apply { setBounds(0, 0, size, size) }.draw(android.graphics.Canvas(bitmap))
+        java.io.ByteArrayOutputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it); it.toByteArray() }
+    } catch (_: Exception) { null }
+
+    private fun securityFlags(app: ApplicationInfo, manifest: DecodedManifest) = SecurityFlags(
+        debuggable = app.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,
+        allowBackup = app.flags and ApplicationInfo.FLAG_ALLOW_BACKUP != 0,
+        // The package manager already applies the target-SDK default (true below API 28).
+        cleartextTraffic = app.flags and ApplicationInfo.FLAG_USES_CLEARTEXT_TRAFFIC != 0,
+        testOnly = app.flags and ApplicationInfo.FLAG_TEST_ONLY != 0,
+        targetSdk = app.targetSdkVersion,
+        networkSecurityConfig = manifest.application?.attribute("networkSecurityConfig"),
+    )
 
     private fun component(info: ComponentInfo, kind: ComponentKind, permission: String?, appEnabled: Boolean) =
         AppComponent(info.name, kind, when (info) {

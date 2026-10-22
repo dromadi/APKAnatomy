@@ -1,17 +1,19 @@
 package com.apkanatomy.domain
 
-data class ArchiveEntry(val archive: String, val path: String, val size: Long, val compressedSize: Long) {
+data class ArchiveEntry(val archive: String, val path: String, val size: Long, val compressedSize: Long) : java.io.Serializable {
     val id: String get() = "$archive:$path"
 }
-data class NativeLibrary(val archive: String, val path: String, val abi: String, val size: Long)
+data class NativeLibrary(val archive: String, val path: String, val abi: String, val size: Long) : java.io.Serializable
 data class DexMetrics(val archive: String, val path: String, val version: String?,
-    val methodReferences: Long?, val classDefinitions: Long?, val note: String?)
-data class Technology(val name: String, val explanation: String, val evidence: List<String>)
+    val methodReferences: Long?, val classDefinitions: Long?, val note: String?) : java.io.Serializable
+data class Technology(val name: String, val explanation: String, val evidence: List<String>) : java.io.Serializable
 data class PackageStructure(
     val archives: List<String> = emptyList(), val entries: List<ArchiveEntry> = emptyList(),
     val libraries: List<NativeLibrary> = emptyList(), val dex: List<DexMetrics> = emptyList(),
     val technologies: List<Technology> = emptyList(), val warnings: List<String> = emptyList(),
-)
+    /** "group:artifact" to version, from META-INF/<group>_<artifact>.version files left by Gradle. */
+    val libraryVersions: Map<String, String> = emptyMap(),
+) : java.io.Serializable
 fun explainEntry(path: String): String = when {
     path == "AndroidManifest.xml" -> "Deklarasi identitas, komponen, izin, dan konfigurasi aplikasi. File ini biasanya berformat XML biner."
     path == "resources.arsc" -> "Tabel resource terkompilasi: menghubungkan ID resource dengan nilai, bahasa, dan konfigurasi perangkat."
@@ -27,4 +29,14 @@ fun componentLesson(kind: ComponentKind): String = when (kind) {
     ComponentKind.SERVICE -> "Service menyediakan komponen kerja tanpa layar. Deklarasinya belum menunjukkan kapan ia berjalan atau tugas tepatnya."
     ComponentKind.RECEIVER -> "Receiver menerima broadcast yang sesuai. Intent-filter membantu menelusuri pemicunya; receiver dinamis tidak selalu tercatat di manifest."
     ComponentKind.PROVIDER -> "Provider menyajikan akses data melalui content URI. Authority memberi alamatnya; izin baca/tulis dapat membatasi akses."
+}
+
+/** What a file inside the APK looks like, read on demand from the archive. */
+sealed interface FilePreview {
+    /** [kind] says how the text was obtained, e.g. "XML biner (didekode)". */
+    data class Text(val text: String, val kind: String, val truncated: Boolean) : FilePreview
+    class Image(val bytes: ByteArray, val format: String) : FilePreview
+    /** Hex and ASCII columns of the first bytes, for files with no readable form. */
+    data class Hex(val dump: String, val note: String) : FilePreview
+    data class Unavailable(val reason: String) : FilePreview
 }

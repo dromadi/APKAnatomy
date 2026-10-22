@@ -1,9 +1,9 @@
-plugins { alias(libs.plugins.android.library); alias(libs.plugins.kotlin.android) }
+plugins { alias(libs.plugins.android.library) }
 android {
     namespace = "com.apkanatomy.data"
-    compileSdk = 35
+    compileSdk = 37
     defaultConfig { minSdk = 26 }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
-    kotlinOptions { jvmTarget = "17" }
 }
-dependencies { implementation(project(":domain")); implementation(libs.coroutines); implementation(libs.dexlib); testImplementation(libs.smali); testImplementation(libs.junit) }
+kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
+dependencies { implementation(project(":domain")); implementation(project(":core:axml")); implementation(libs.coroutines); implementation(libs.dexlib); testImplementation(libs.smali); testImplementation(libs.junit) }

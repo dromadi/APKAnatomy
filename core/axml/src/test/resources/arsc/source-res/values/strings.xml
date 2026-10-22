@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">Anatomi Demo</string>
+    <string name="greeting">Hello &amp; welcome</string>
+    <string name="filler_0">Filler 0</string>
+    <string name="filler_1">Filler 1</string>
+    <string name="filler_2">Filler 2</string>
+    <string name="filler_3">Filler 3</string>
+    <string name="filler_4">Filler 4</string>
+    <string name="filler_5">Filler 5</string>
+    <string name="filler_6">Filler 6</string>
+    <string name="filler_7">Filler 7</string>
+    <string name="filler_8">Filler 8</string>
+    <string name="filler_9">Filler 9</string>
+    <string name="filler_10">Filler 10</string>
+    <string name="filler_11">Filler 11</string>
+    <string name="filler_12">Filler 12</string>
+    <string name="filler_13">Filler 13</string>
+    <string name="filler_14">Filler 14</string>
+    <string name="filler_15">Filler 15</string>
+    <string name="filler_16">Filler 16</string>
+    <string name="filler_17">Filler 17</string>
+    <string name="filler_18">Filler 18</string>
+    <string name="filler_19">Filler 19</string>
+    <color name="brand">#FF1B2A3A</color>
+    <bool name="feature_on">true</bool>
+    <integer name="retries">3</integer>
+    <dimen name="gap">16dp</dimen>
+</resources>
