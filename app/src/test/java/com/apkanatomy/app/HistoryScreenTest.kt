@@ -76,6 +76,32 @@ class HistoryScreenTest {
         compose.shot("glossary_search")
     }
 
+    @Test fun auditRanksAppsAndFilters() {
+        val apps = listOf(
+            com.apkanatomy.domain.AppAudit("id.toko", "Toko Contoh", false, "4.2.0", 26, debuggable = false, allowBackup = true, cleartextTraffic = false,
+                installer = "com.android.packageinstaller", permissions = listOf("android.permission.CAMERA", "android.permission.ACCESS_FINE_LOCATION"), openComponents = 3,
+                trackers = listOf("Google AdMob" to "Iklan", "AppsFlyer" to "Atribusi pemasaran")),
+            com.apkanatomy.domain.AppAudit("org.catatan", "Catatan", false, "1.0", 35, false, false, false, "org.fdroid.fdroid", emptyList(), 1, emptyList()))
+        var opened: String? = null
+        screen { AuditScreen(apps, null, busy = false, start = {}, cancel = {}, inspect = { opened = it }) }
+        compose.onNodeWithText("2 aplikasi diperiksa").assertExists()
+        compose.onNodeWithText("8 poin").assertExists()
+        compose.onNodeWithText("Tidak ada yang menonjol.").assertExists()
+        compose.shot("audit_results")
+        compose.onNodeWithText("Pelacak (1)").performClick()
+        compose.onNodeWithText("Catatan").assertDoesNotExist()
+        compose.onNodeWithText("Toko Contoh").performClick()
+        assertEquals("id.toko", opened)
+    }
+
+    @Test fun auditShowsProgressWithCancel() {
+        var cancelled = false
+        screen { AuditScreen(null, Triple(4, 20, "Kalkulator"), busy = true, start = {}, cancel = { cancelled = true }, inspect = {}) }
+        compose.onNodeWithText("Memeriksa 5/20: Kalkulator").assertExists()
+        compose.onNodeWithText("Batal").performClick()
+        assertTrue(cancelled)
+    }
+
     @Test fun progressShowsTheStepAndCancels() {
         var cancelled = false
         screen { AnalysisProgress(2) { cancelled = true } }

@@ -27,7 +27,11 @@ data class UiState(val apps: List<AppEntry> = emptyList(), val report: AnatomyRe
     val step: Int? = null,
     val history: List<HistoryEntry> = emptyList(),
     /** A neutral message such as a cancelled analysis. */
-    val info: String? = null)
+    val info: String? = null,
+    /** Results of the last audit of all installed apps; null before the first one. */
+    val audit: List<AppAudit>? = null,
+    /** (done, total, current app) while an audit runs. */
+    val auditProgress: Triple<Int, Int, String>? = null)
 class AnatomyViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = AnatomyRepository(application)
     private val historyStore = HistoryStore(File(application.filesDir, "history"))
@@ -43,7 +47,17 @@ class AnatomyViewModel(application: Application) : AndroidViewModel(application)
     fun inspect(packageName: String) = analyze { repository.analyzeInstalled(packageName, it) }
     fun inspect(uri: Uri) = analyze { repository.analyzeFile(uri, it) }
     /** Stops a running analysis; listing apps or opening history is not cancellable. */
-    fun cancel() { if (mutable.value.step != null) work?.cancel() }
+    fun cancel() { if (mutable.value.step != null || mutable.value.auditProgress != null) work?.cancel() }
+    fun audit(includeSystem: Boolean) = runWork {
+        try {
+            mutable.update { it.copy(auditProgress = Triple(0, 0, "")) }
+            val results = repository.audit(includeSystem) { done, total, label -> mutable.update { it.copy(auditProgress = Triple(done, total, label)) } }
+            mutable.update { it.copy(audit = results) }
+        } catch (cancelled: CancellationException) {
+            mutable.update { it.copy(info = "Audit dibatalkan.") }
+            throw cancelled
+        } finally { mutable.update { it.copy(auditProgress = null) } }
+    }
     fun back() {
         if (work?.isActive == true) return
         mutable.update { it.copy(report = null, error = null, info = null) }

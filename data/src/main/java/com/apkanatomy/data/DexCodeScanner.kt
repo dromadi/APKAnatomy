@@ -268,3 +268,28 @@ private fun renderInstruction(offset: Int, instruction: Instruction): String {
     val branch = if (instruction is OffsetInstruction) "target=0x${(offset + instruction.codeOffset).toString(16)}" else ""
     return "0x${offset.toString(16)}  ${instruction.opcode.name.lowercase().replace('_', '-')} " + listOf(registers, reference, literal, branch).filter { it.isNotEmpty() }.joinToString(" · ")
 }
+
+/**
+ * Only the packages of the classes defined in [files], for quick SDK detection across many apps.
+ * Returns a note when some DEX could not be read or exceeded [maxBytes] in total.
+ */
+internal fun dexPackages(files: List<File>, maxBytes: Long = 64L * 1024 * 1024, checkCancelled: () -> Unit = {}): Pair<Set<String>, String?> {
+    val packages = HashSet<String>()
+    var total = 0L
+    var note: String? = null
+    for (file in files) try {
+        ZipFile(file).use { zip ->
+            for (entry in zip.entries().asSequence().filter { Regex("classes([0-9]+)?\\.dex").matches(it.name) }) {
+                checkCancelled()
+                if (entry.size !in 112..(maxBytes - total)) { note = "Sebagian DEX dilewati karena batas ukuran."; continue }
+                total += entry.size
+                val bytes = zip.getInputStream(entry).use { input -> ByteArrayOutputStream().use { out -> copyBounded(input, out, entry.size); out.toByteArray() } }
+                DexBackedDexFile.fromInputStream(null, bytes.inputStream()).classes.forEach { cls ->
+                    packages += cls.type.removePrefix("L").substringBeforeLast('/', "").replace('/', '.')
+                }
+            }
+        }
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (_: Exception) { note = "Sebagian kode tidak dapat dibaca." }
+    return packages to note
+}

@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.29
+# APKAnatomy 0.1.0-alpha.30
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -309,3 +309,16 @@ The method view in Kode opens on **Kode semu**, a Java-like reading of the instr
 - Fields, arrays, casts, `instanceof`, arithmetic (including `/2addr` and `/lit` forms), conversions, comparisons, `throw`, `synchronized`, and `switch` are covered. Anything else stays as a `// opcode` comment, and an unexpected instruction shape only costs its own line.
 
 dexlib2 names opcodes as smali does (`const/4`, `add-int/2addr`), which the first version did not expect: on F-Droid nearly every line fell back to a comment. After that fix, 215 of 80,000 lines do. Pseudo-code is rendered at scan time for indexed methods, up to 80,000 lines in total (`CodeLimits.pseudoLines`). The app's own code is indexed first, so it is covered first; on F-Droid that is 7,111 methods, at about 1.5 s extra on a cold JVM. Example from F-Droid's `FileCompat.symlinkRuntime`: `p1 = Runtime.getRuntime(); p0 = p1.exec(p0);`.
+
+## Alpha.30: audit every installed app
+
+A fourth home section, **Audit**, looks at all user apps (system apps optional) in one pass and ranks them. For each app it reads from the package manager the flags (debuggable, backup, cleartext), targetSdk, requested permissions, open components and installer. It also gets tracker SDKs from the DEX class packages: `dexPackages()` reads only class definitions, about 0.3 s for F-Droid's 24k classes.
+
+`AppAudit.reasons()` (domain) explains what stands out, each with points used only for ordering:
+- debuggable: 3 points;
+- targetSdk below 29: 2 points;
+- one point per tracker, grouped by purpose;
+- one point per personal-data category, up to 5 (same categories as Privasi);
+- cleartext allowed, more than one open component, or an installer that is not a known store: 1 point each.
+
+The screen says the points are not a security rating, shows per-filter counts (Pelacak, Data pribadi, Target lama, Debuggable, Bukan dari toko, Komponen terbuka) as chips, and opens the full analysis on tap. The audit shows "Memeriksa n/N: app" with a Batal button and runs under the same cancellable job as an analysis.

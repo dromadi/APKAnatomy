@@ -64,3 +64,9 @@ fun AnatomyReport.privacyProfile(): PrivacyProfile {
     }
     return PrivacyProfile(trackers, access, hosts, adId, summary)
 }
+
+/** Purpose of a tracker SDK by its detected name, e.g. "Google AdMob" → "Iklan"; null for SDKs that are not trackers. */
+fun trackerPurpose(sdkName: String): String? = TRACKER_PURPOSE[sdkName]
+
+/** The personal-data categories (Lokasi, Kamera, …) that [permissions] give access to. */
+fun dataCategories(permissions: Collection<String>): List<String> = CATEGORIES.filter { c -> c.permissions.any { it in permissions } }.map { it.name }

@@ -13,6 +13,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -72,16 +74,17 @@ private fun AnatomyApp(model: AnatomyViewModel) {
             state.info?.let { Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 8.dp)) }
             val report = state.report
             if (report == null) {
-                // 0 = installed apps, 1 = history, 2 = glossary
+                // 0 = installed apps, 1 = history, 2 = audit, 3 = glossary
                 var section by rememberSaveable { mutableIntStateOf(0) }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
-                    listOf("Terinstal", "Riwayat (${state.history.size})", "Kamus").forEachIndexed { i, label ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState())) {
+                    listOf("Terinstal", "Riwayat (${state.history.size})", "Audit", "Kamus").forEachIndexed { i, label ->
                         FilterChip(selected = section == i, onClick = { section = i }, label = { Text(label) })
                     }
                 }
                 when (section) {
                     1 -> HistoryList(state.history, state.busy, model::openHistory, model::baselineFromHistory, model::deleteHistory, model::clearHistory)
-                    2 -> GlossaryScreen()
+                    2 -> AuditScreen(state.audit, state.auditProgress, state.busy, model::audit, model::cancel, model::inspect)
+                    3 -> GlossaryScreen()
                     else -> AppList(state.apps, state.busy, model::inspect)
                 }
             }
@@ -127,6 +130,64 @@ internal fun HistoryList(history: List<HistoryEntry>, busy: Boolean, open: (Stri
             }
         }
         if (history.isNotEmpty()) item { TextButton(onClick = clear, enabled = !busy) { Text("Hapus semua riwayat") } }
+    }
+}
+
+/** Audit of all installed apps: a ranked list of what stands out, with filters; tap an app for the full analysis. */
+@Composable
+internal fun AuditScreen(results: List<AppAudit>?, progress: Triple<Int, Int, String>?, busy: Boolean,
+    start: (Boolean) -> Unit, cancel: () -> Unit, inspect: (String) -> Unit) {
+    var includeSystem by rememberSaveable { mutableStateOf(false) }
+    var filter by rememberSaveable { mutableStateOf<String?>(null) }
+    val ranked = remember(results) { results.orEmpty().map { it to it.reasons() }.sortedByDescending { (_, r) -> r.sumOf { it.points } } }
+    val shown = remember(ranked, filter) { ranked.filter { (_, r) -> filter == null || r.any { it.filter == filter } } }
+    val summary = remember(results) { results.orEmpty().auditSummary() }
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+        item {
+            Text("Pindai cepat semua aplikasi: izin data pribadi, SDK pelacak, debuggable, target SDK lama, komponen terbuka, dan sumber pemasangan. " +
+                "Poin hanya untuk mengurutkan, bukan nilai keamanan: aplikasi peta wajar meminta lokasi. Ketuk aplikasi untuk analisis lengkap.", style = MaterialTheme.typography.bodySmall)
+        }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(includeSystem, { includeSystem = it }, enabled = !busy)
+                Text("Sertakan aplikasi sistem", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        item {
+            if (progress != null) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                val (done, total, label) = progress
+                Text(if (total == 0) "Menyiapkan…" else "Memeriksa ${done + 1}/$total: $label", style = MaterialTheme.typography.bodyMedium)
+                LinearProgressIndicator(progress = { if (total == 0) 0f else done.toFloat() / total }, modifier = Modifier.fillMaxWidth())
+                OutlinedButton(onClick = cancel) { Text("Batal") }
+            } else Button(onClick = { start(includeSystem) }, enabled = !busy) { Text(if (results == null) "Mulai audit" else "Audit ulang") }
+        }
+        if (results != null) {
+            item {
+                Text("${results.size} aplikasi diperiksa", style = MaterialTheme.typography.titleMedium)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = filter == null, onClick = { filter = null }, label = { Text("Semua") })
+                    summary.forEach { (name, count) -> FilterChip(selected = filter == name, onClick = { filter = name }, enabled = count > 0, label = { Text("$name ($count)") }) }
+                }
+            }
+            if (shown.isEmpty()) item { Text("Tidak ada aplikasi yang cocok.") }
+            items(shown, key = { it.first.packageName }) { (app, reasons) ->
+                Card(Modifier.fillMaxWidth().clickable(enabled = !busy) { inspect(app.packageName) }) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            PackageIcon(app.packageName)
+                            Column(Modifier.weight(1f)) {
+                                Text(app.label, style = MaterialTheme.typography.titleMedium)
+                                Text("${app.packageName} · ${app.versionName} · target ${app.targetSdk}", style = MaterialTheme.typography.bodySmall)
+                            }
+                            Text("${reasons.sumOf { it.points }} poin", style = MaterialTheme.typography.labelLarge)
+                        }
+                        if (reasons.isEmpty()) Text("Tidak ada yang menonjol.", style = MaterialTheme.typography.bodySmall)
+                        reasons.forEach { Text("• ${it.text}", style = MaterialTheme.typography.bodySmall) }
+                        app.note?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+                    }
+                }
+            }
+        }
     }
 }
 

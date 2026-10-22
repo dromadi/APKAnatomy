@@ -107,6 +107,41 @@ class AnatomyRepository(private val context: Context) {
         PreviewReader.preview(file, path, table)
     }
 
+    /**
+     * A quick look at every installed app (user apps only unless [includeSystem]): flags, permissions, open
+     * components, install source, and tracker SDKs from the DEX packages. [onProgress] gets (done, total, label).
+     */
+    suspend fun audit(includeSystem: Boolean, onProgress: (Int, Int, String) -> Unit = { _, _, _ -> }): List<AppAudit> = withContext(Dispatchers.IO) {
+        val job = coroutineContext
+        val apps = pm.getInstalledApplications(0).filter { includeSystem || it.flags and ApplicationInfo.FLAG_SYSTEM == 0 }
+            .sortedBy { pm.getApplicationLabel(it).toString().lowercase() }
+        apps.mapIndexedNotNull { i, app ->
+            job.ensureActive()
+            val label = pm.getApplicationLabel(app).toString()
+            onProgress(i, apps.size, label)
+            try { auditOne(app.packageName, label) { job.ensureActive() } }
+            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { null }
+        }.also { onProgress(apps.size, apps.size, "") }
+    }
+
+    private fun auditOne(packageName: String, label: String, checkCancelled: () -> Unit): AppAudit {
+        val info = pm.getPackageInfo(packageName, flags)
+        val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
+        val files = (listOfNotNull(app.sourceDir) + app.splitSourceDirs.orEmpty()).map(::File)
+        val (packages, note) = dexPackages(files, checkCancelled = checkCancelled)
+        val trackers = detectSdks(packages, emptyMap()).mapNotNull { sdk -> trackerPurpose(sdk.name)?.let { sdk.name to it } }
+        val components = info.activities.orEmpty().map { component(it, ComponentKind.ACTIVITY, it.permission, app.enabled) } +
+            info.services.orEmpty().map { component(it, ComponentKind.SERVICE, it.permission, app.enabled) } +
+            info.receivers.orEmpty().map { component(it, ComponentKind.RECEIVER, it.permission, app.enabled) } +
+            info.providers.orEmpty().map { component(it, ComponentKind.PROVIDER, it.readPermission, app.enabled).copy(writePermission = it.writePermission) }
+        return AppAudit(packageName, label, app.flags and ApplicationInfo.FLAG_SYSTEM != 0, info.versionName ?: "—", app.targetSdkVersion,
+            debuggable = app.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0, allowBackup = app.flags and ApplicationInfo.FLAG_ALLOW_BACKUP != 0,
+            cleartextTraffic = app.flags and ApplicationInfo.FLAG_USES_CLEARTEXT_TRAFFIC != 0, installer = installerOf(packageName),
+            permissions = info.requestedPermissions.orEmpty().toList(), openComponents = components.openToAllApps().size,
+            trackers = trackers, note = note)
+    }
+
     /** Every resource of the current base APK, for the resource browser. */
     suspend fun resources(): ResourceListing = withContext(Dispatchers.IO) {
         val base = archives["base.apk"] ?: return@withContext ResourceListing(emptyList(), "Arsip tidak lagi tersedia; buka ulang laporannya.")
