@@ -237,6 +237,7 @@ class DexCodeScannerTest {
         File(root, "Main.smali").writeText("""
             .class public Lsample/Main;
             .super Landroid/app/Activity;
+            .source "MainScreen.kt"
             .method public open()V
                 .registers 3
                 new-instance v0, Landroid/content/Intent;
@@ -272,6 +273,10 @@ class DexCodeScannerTest {
         assertEquals("base.apk:classes.dex:Lsample/Main;->open()V", links.single { it.to == "Lsample/Second;" }.methodId)
         // Classes beyond the index are read by the last pass.
         assertEquals(links.toSet(), scan(CodeLimits(classes = 1)).toSet())
+        // The SourceFile attribute is kept with the class.
+        val classes = DexCodeScanner().scan(listOf(apk), "sample").classes.associateBy { it.type }
+        assertEquals("MainScreen.kt", classes.getValue("Lsample/Main;").sourceFile)
+        assertNull(classes.getValue("Lsample/Demo;").sourceFile)
     }
 
     @Test fun readsTheControlFlowOfOneMethod() = fixture({ root ->

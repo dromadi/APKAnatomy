@@ -69,6 +69,20 @@ class RichReportScreenTest {
         compose.shot("rich_xref_method")
         compose.onNodeWithText("Instruksi DEX").performClick()
         compose.onNodeWithText("const-string v0", substring = true).assertExists()
+        // Tapping an instruction explains it.
+        compose.onNodeWithText("const-string v0", substring = true).performClick()
+        compose.onNodeWithText("const-string: Memuat string").assertExists()
+        compose.shot("rich_instruction_help")
+    }
+
+    @Test fun obfuscatedClassesShowTheirSourceFile() {
+        show()
+        compose.openTab("Kode")
+        compose.onNodeWithText("Petunjuk nama asli").assertExists()
+        compose.onNode(androidx.compose.ui.test.hasSetTextAction()).performTextInput("CartRepo")
+        compose.onNodeWithText("id.contoh.toko.a.b").performClick()
+        compose.onNodeWithText("CartRepository.kt", substring = true).assertExists()
+        compose.shot("rich_source_hint")
     }
 
     @Test fun perilakuShowsRiskyCodeFirstAndLinksToIt() {

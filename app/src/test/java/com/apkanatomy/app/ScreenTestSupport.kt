@@ -68,7 +68,8 @@ internal fun richReport(): AnatomyReport {
             libraryVersions = mapOf("com.google.firebase:firebase-messaging" to "24.1.0", "androidx.core:core" to "1.15.0")),
         code = CodeIndex(
             classes = listOf(CodeClass("Lid/contoh/toko/net/Api;", "Ljava/lang/Object;", emptyList(), "base.apk", "classes.dex"),
-                CodeClass("Lid/contoh/toko/checkout/PaymentActivity;", "Landroid/app/Activity;", emptyList(), "base.apk", "classes.dex")),
+                CodeClass("Lid/contoh/toko/checkout/PaymentActivity;", "Landroid/app/Activity;", emptyList(), "base.apk", "classes.dex", "PaymentActivity.kt"),
+                CodeClass("Lid/contoh/toko/a/b;", "Ljava/lang/Object;", emptyList(), "base.apk", "classes.dex", "CartRepository.kt")),
             methods = listOf(CodeMethod(CHECKOUT.substringAfter("classes.dex:"), "Lid/contoh/toko/net/Api;", "checkout", "base.apk", "classes.dex",
                 "public static", true, listOf("0x0  const-string v0, \"https://api.contoh.id/v2/checkout\"", "0x2  return-void"), 2, false,
                 listOf("v0 = \"https://api.contoh.id/v2/checkout\";", "return;")),

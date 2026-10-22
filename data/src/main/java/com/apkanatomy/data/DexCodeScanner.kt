@@ -115,7 +115,7 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                     checkCancelled()
                     if (classes.size >= limits.classes) { warnings.add("Batas class tercapai; indeks hanya sebagian."); break@indexing }
                     var complete = true
-                    classes.add(CodeClass(cls.type, cls.superclass, cls.interfaces.toList(), archive, current.name))
+                    classes.add(CodeClass(cls.type, cls.superclass, cls.interfaces.toList(), archive, current.name, cls.sourceFile?.take(200)))
                     for (method in cls.methods) {
                         checkCancelled()
                         if (methods.size >= limits.methods) { warnings.add("Batas method tercapai; indeks hanya sebagian."); break@indexing }

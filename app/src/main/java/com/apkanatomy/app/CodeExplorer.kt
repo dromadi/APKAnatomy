@@ -56,7 +56,11 @@ internal fun CodeExplorer(index: CodeIndex, openMethodId: String? = null, openCl
         val methods = remember(index, selectedClass) { index.methods.filter { it.owner == selectedClass.type && it.archive == selectedClass.archive && it.dex == selectedClass.dex } }
         TextButton(onClick = { selectedClassId = null }) { Text("Kembali ke pencarian") }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
-            item { CodeCard(selectedClass.displayName, "${selectedClass.archive}/${selectedClass.dex}\nSuperclass: ${selectedClass.superType ?: "—"}\nInterface: ${selectedClass.interfaces.joinToString().ifEmpty { "—" }}") }
+            item {
+                CodeCard(selectedClass.displayName, "${selectedClass.archive}/${selectedClass.dex}\nSuperclass: ${selectedClass.superType ?: "—"}\nInterface: ${selectedClass.interfaces.joinToString().ifEmpty { "—" }}" +
+                    "\nFile sumber: " + (selectedClass.realSourceFile() ?: "tidak ada (dihapus atau diganti R8)") +
+                    (selectedClass.sourceHint()?.let { "\nNama class ini disamarkan, tetapi atribut SourceFile masih menyimpan nama file aslinya: $it. Aplikasi sering mempertahankannya agar laporan crash tetap terbaca." } ?: ""))
+            }
             item { Text("${methods.size} method terdefinisi dalam cakupan indeks. Nama dapat disamarkan oleh obfuscation.") }
             items(methods.take(500), key = { it.id }) { method -> CodeCard(method.descriptor, method.access, onClick = { selectedMethodId = method.id }) }
             if (methods.size > 500) item { Text("Daftar dibatasi 500 method; gunakan pencarian method untuk menemukan yang lain.") }
@@ -68,12 +72,14 @@ internal fun CodeExplorer(index: CodeIndex, openMethodId: String? = null, openCl
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf("Class", "Method", "String").forEachIndexed { i, label -> FilterChip(selected = mode == i, onClick = { mode = i }, label = { Text(label) }) }
     }
-    val classes = remember(index, query) { index.classes.filter { it.displayName.contains(query, true) } }
+    val classes = remember(index, query) { index.classes.filter { it.displayName.contains(query, true) || (query.length >= 2 && it.realSourceFile()?.contains(query, true) == true) } }
+    val hinted = remember(index) { index.classes.count { it.sourceHint() != null } }
     val methods = remember(index, query) { index.methods.filter { it.descriptor.contains(query, true) } }
     val strings = remember(index, query) { if (query.length < 2) emptyList() else index.strings.filter { it.value.contains(query, true) } }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
         item { CodeCard("Mulai menelusuri", "Cari nama class, signature method, atau string literal (mis. URL, pesan error, nama endpoint). Buka method untuk melihat instruksi DEX, pemanggilan keluar, dan Find usage.") }
         item { Text("${index.classes.size} class · ${index.methods.size} method · ${index.calls.size} pemanggilan langsung. Hasil bukan kode Java hasil dekompilasi.", style = MaterialTheme.typography.bodySmall) }
+        if (hinted > 0) item { CodeCard("Petunjuk nama asli", "$hinted class bernama tersamar masih menyimpan nama file sumbernya (atribut SourceFile). Cari nama file seperti “ViewModel.kt” untuk menemukannya; nama itu muncul di setiap hasil class.") }
         items(index.warnings) { CodeCard("Cakupan terbatas", it) }
         if (mode == 2) {
             item { Text(if (query.length < 2) "Ketik minimal 2 huruf untuk mencari di ${index.strings.size} string literal." else "${strings.size} string literal cocok", style = MaterialTheme.typography.bodyMedium) }
@@ -87,7 +93,7 @@ internal fun CodeExplorer(index: CodeIndex, openMethodId: String? = null, openCl
             if (methods.size > 250) item { Text("Menampilkan 250 hasil; persempit pencarian.") }
         } else {
             item { Text("${classes.size} hasil class") }
-            items(classes.take(250), key = { it.id }) { cls -> CodeCard(cls.displayName, "${cls.archive}/${cls.dex}", onClick = { selectedClassId = cls.id }) }
+            items(classes.take(250), key = { it.id }) { cls -> CodeCard(cls.displayName, "${cls.archive}/${cls.dex}" + (cls.sourceHint()?.let { " · dari $it" } ?: ""), onClick = { selectedClassId = cls.id }) }
             if (classes.size > 250) item { Text("Menampilkan 250 hasil; persempit pencarian.") }
         }
     }
@@ -124,12 +130,15 @@ private fun MethodDetail(index: CodeIndex, method: CodeMethod,
                 item {
                     Text(if (showPseudo) "Kode semu mirip Java, diterjemahkan per instruksi: register tetap bernama v0, p0 (parameter), atau this; percabangan tetap berupa goto. " +
                         "Untuk dibaca, bukan dikompilasi; nama variabel dan tipe asli sudah hilang saat kompilasi."
-                        else "Instruksi ditampilkan dengan offset dalam code unit DEX. Ini ringkasan disassembly, bukan Java atau Smali lengkap yang bisa dikompilasi.", style = MaterialTheme.typography.bodySmall)
+                        else "Instruksi ditampilkan dengan offset dalam code unit DEX; ketuk satu instruksi untuk penjelasannya. $REGISTER_NOTE", style = MaterialTheme.typography.bodySmall)
                 }
                 if (!method.hasCode) item { Text("Tidak ada implementasi DEX untuk method ini; bisa berupa abstract atau native.") }
                 else if (method.pseudo.isEmpty()) item { Text("Kode semu tidak dibuat untuk method ini (batas tampilan tercapai); lihat instruksi DEX.", style = MaterialTheme.typography.bodySmall) }
                 val lines = if (showPseudo) method.pseudo else method.instructions
-                items(lines.withIndex().toList(), key = { "${showPseudo}:${it.index}" }) { line -> SelectionContainer { Text(line.value, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) } }
+                items(lines.withIndex().toList(), key = { "${showPseudo}:${it.index}" }) { line ->
+                    if (showPseudo) SelectionContainer { Text(line.value, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
+                    else InstructionLine(line.value)
+                }
                 if (method.truncated) item { Text("Tampilan/pemindaian instruksi dibatasi. ${method.instructionCount} instruksi terbaca; daftar bukan keseluruhan method.") }
             }
             1 -> {
@@ -187,6 +196,23 @@ private fun MethodDetail(index: CodeIndex, method: CodeMethod,
             }
         }
         if ((tab == 2 && outgoing.size > 250) || (tab == 3 && incoming.size > 250)) item { Text("Daftar menampilkan 250 call-site pertama.") }
+    }
+}
+
+/** One line of the DEX listing; tapping it shows what the instruction does. */
+@Composable
+private fun InstructionLine(line: String) {
+    var open by rememberSaveable(line) { mutableStateOf(false) }
+    val help = remember(line) { explainInstruction(line) }
+    Column(Modifier.fillMaxWidth().clickable(enabled = help != null) { open = !open }) {
+        Text(line, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
+            color = if (open) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+        if (open && help != null) Card(Modifier.fillMaxWidth().padding(vertical = 4.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+            Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("${help.opcode}: ${help.title}", style = MaterialTheme.typography.labelLarge)
+                Text(help.explanation, style = MaterialTheme.typography.bodySmall)
+            }
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.42
+# APKAnatomy 0.1.0-alpha.43
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -449,3 +449,15 @@ The Komponen tab opens with a **Peta komponen** card showing which activity, ser
 - `AnatomyReport` gained `screenLinks`, so history entries saved by earlier versions can no longer be read; they are removed with the usual message.
 
 Checked on F-Droid, which is mostly Compose with few activities. Links found include `SwapService` → `SwapWorkflowActivity` (its notification), `NotificationManager` → `MainActivity`, `ExtraSettingsKt` → `PanicActivity` and `IpfsGatewaySettingsActivity` (Compose settings screens), and `AppInstallManager` → `AppInstallService`. WorkManager's internal starts are hidden as library links.
+
+## Alpha.43: instruction guide and original file names
+
+**Tap an instruction to learn it.** In the "Instruksi DEX" view of a method, each line can be tapped to show what its opcode does, in Indonesian. `explainInstruction()` (domain) knows about 45 opcode families: moves and results, constants (with what `/4`, `/16`, `/high16` mean), strings and class literals, objects and arrays, fields (instance and static), the five invoke kinds and `/range`, branches (including `if-eqz` as a null check), switches (packed and sparse), comparisons, conversions and arithmetic (`/2addr`, `/lit8`, division by zero), `synchronized`, throw and catch. The header also explains register names: v0… are locals, and p0… are parameters, with p0 being `this` in an instance method.
+
+**Original file names.** `CodeClass` now keeps the DEX `SourceFile` attribute. R8 renames classes, but apps often keep this attribute so crash stack traces stay readable, so an obfuscated `a.b` can still say it came from `CartRepository.kt`.
+- The class card shows its source file, or explains that R8 removed or replaced it (`SourceFile`, `r8-map-id-…`).
+- An obfuscated class (one- or two-letter name) whose file name differs gets a hint in the search results.
+- Searching classes also matches source file names.
+- The search page counts how many obfuscated classes still carry their file name.
+
+F-Droid keeps a real source file on 20,099 of its 24,528 classes. It is not obfuscated, so no hints appear there. `CodeClass` gained a field, so older history entries can no longer be read.

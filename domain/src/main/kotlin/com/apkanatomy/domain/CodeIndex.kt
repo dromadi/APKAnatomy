@@ -1,7 +1,9 @@
 package com.apkanatomy.domain
 
 data class CodeClass(val type: String, val superType: String?, val interfaces: List<String>,
-    val archive: String, val dex: String) : java.io.Serializable {
+    val archive: String, val dex: String,
+    /** The SourceFile attribute: the file the class was compiled from, unless R8 removed or replaced it. */
+    val sourceFile: String? = null) : java.io.Serializable {
     val id: String get() = "$archive:$dex:$type"
     val displayName: String get() = type.removePrefix("L").removeSuffix(";").replace('/', '.')
 }
