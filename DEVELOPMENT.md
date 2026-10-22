@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.16
+# APKAnatomy 0.1.0-alpha.17
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -199,3 +199,14 @@ A Kemampuan tab reads what the manifest asks of the device and platform: uses-fe
 DNA notes gain: an exported activity whose taskAffinity points to another package together with allowTaskReparenting (the StrandHogg task-hijacking pattern, PERHATIAN), other foreign task affinities, sharedUserId (deprecated, shares the Linux user ID) and requestLegacyExternalStorage. Capabilities are exported and part of the Banding diff (new location, camera, microphone or screen-capture foreground services are flagged).
 
 Fixture `data/src/test/resources/extras/extras.apk` is aapt2 output of the manifest and resources next to it.
+
+## Alpha.17: privacy profile
+
+A Privasi tab, placed right after the overview, answers "what could this app learn about me?" in plain language, in the spirit of Exodus Privacy:
+
+- Trackers: detected SDKs whose purpose is ads, marketing attribution, analytics, crash reporting or notification segmentation, with their evidence.
+- Data access: requested permissions grouped into fifteen categories (location and background location, camera, microphone, contacts and accounts, calendar, SMS, phone and call log, media, all files, health and activity, nearby devices, installed apps, usage statistics, advertising ID), each noting whether the user sees a runtime prompt.
+- Tracker endpoints: hosts of known ad and analytics services found by Jejak.
+- A one-paragraph summary, also on the overview, in exports and as a Banding section (new data categories and trackers are flagged).
+
+Everything comes from the APK: a bundled SDK may never be called and runtime permissions may be refused, so the tab says so and points to the Play Store data-safety section for comparison. `privacyProfile()` is a pure domain function with unit tests.

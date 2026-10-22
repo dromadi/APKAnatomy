@@ -62,6 +62,12 @@ fun compareReports(old: AnatomyReport, new: AnatomyReport, now: Long): List<Diff
         (ov.keys intersect nv.keys).sorted().mapNotNullTo(this) { changed(it, ov[it], nv[it]) }
         addAll(setDiff(ov.keys, nv.keys, { it }))
     }),
+    DiffSection("Privasi", buildList {
+        addAll(setDiff(old.privacyProfile().dataAccess.map { it.category }, new.privacyProfile().dataAccess.map { it.category }, { "Akses data: $it" },
+            attention = { true }))
+        addAll(setDiff(old.privacyProfile().trackers.map { "${it.name} (${it.purpose})" }, new.privacyProfile().trackers.map { "${it.name} (${it.purpose})" },
+            { "Pelacak $it" }, attention = { true }))
+    }),
     DiffSection("Kemampuan", buildList {
         addAll(setDiff(old.capabilities.features.map { it.name }, new.capabilities.features.map { it.name }, { "Fitur $it" }))
         addAll(setDiff(old.capabilities.foregroundServices.flatMap { s -> s.types.map { "${s.service}: $it" } },

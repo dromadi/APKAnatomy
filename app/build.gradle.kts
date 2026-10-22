@@ -9,8 +9,8 @@ android {
         applicationId = "com.apkanatomy.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
-        versionName = "0.1.0-alpha.16"
+        versionCode = 17
+        versionName = "0.1.0-alpha.17"
     }
     buildFeatures { compose = true }
     testOptions {

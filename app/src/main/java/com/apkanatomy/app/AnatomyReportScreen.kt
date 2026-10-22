@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (ArchiveEntry) -> FilePreview,
     baseline: AnatomyReport? = null, clearBaseline: () -> Unit = {}) {
     var selectedTab by rememberSaveable(report.packageName, report.source) { mutableIntStateOf(0) }
-    val tabs = listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Kemampuan", "Isi APK", "Kode", "Manifest", "DNA", "Kulit", "Jejak") + listOfNotNull(baseline?.let { "Banding" })
+    val tabs = listOf("Ringkasan", "Privasi", "Teknologi", "Komponen", "Izin", "Kemampuan", "Isi APK", "Kode", "Manifest", "DNA", "Kulit", "Jejak") + listOfNotNull(baseline?.let { "Banding" })
     // The Banding tab disappears when the baseline is cleared.
     val tab = selectedTab.coerceAtMost(tabs.lastIndex)
     Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -53,6 +53,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
     key(report.packageName, report.source) {
         when (tabs[tab]) {
             "Ringkasan" -> Overview(report) { name -> selectedTab = tabs.indexOf(name).coerceAtLeast(0) }
+            "Privasi" -> PrivacyScreen(report)
             "Teknologi" -> TechnologyScreen(report)
             "Komponen" -> ComponentsScreen(report)
             "Izin" -> PermissionsScreen(report)
@@ -73,6 +74,10 @@ private fun Overview(report: AnatomyReport, open: (String) -> Unit) {
     val s = report.structure
     LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item { LessonCard("Mulai membedah", "Kenali teknologinya, jelajahi komponen, lalu telusuri file yang menyusunnya. Hasil ini berasal dari analisis statis paket; alur eksekusi belum direkam.") }
+        item {
+            val privacy = remember(report) { report.privacyProfile() }
+            LessonCard("Privasi", privacy.summary, onClick = { open("Privasi") })
+        }
         item { LessonCard("Teknologi", s.technologies.joinToString { it.name }.ifEmpty { "Belum ada penanda framework yang dikenali. Ini tidak otomatis berarti aplikasi pure native." } +
             "\n${report.sdks.size} SDK/library dikenali" + (report.sdks.takeIf { it.isNotEmpty() }?.joinToString(prefix = ": ") { it.name }?.take(160) ?: "."), onClick = { open("Teknologi") }) }
         item { LessonCard("Kerangka", "${report.components.size} komponen · ${report.permissions.size} izin yang diminta · ${report.components.openToAllApps().size} exported tanpa izin · ${report.components.sumOf { c -> c.intentFilters.count { it.isDeepLink } }} deep link · ${report.permissions.count { sensitivePermissionLesson(it.name) != null }} izin sensitif. Pelajari titik masuk layar, kerja tanpa layar, broadcast, dan akses data.", onClick = { open("Komponen") }) }
@@ -376,6 +381,24 @@ private fun CompareScreen(old: AnatomyReport, new: AnatomyReport, clearBaseline:
                     color = if (change.attention) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
             }
         }
+    }
+}
+
+@Composable
+private fun PrivacyScreen(report: AnatomyReport) {
+    val p = remember(report) { report.privacyProfile() }
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+        item { LessonCard("Ringkasan privasi", p.summary + "\n\nDisusun dari isi APK (SDK yang dibundel, izin yang diminta, alamat di string). Belum tentu semuanya aktif: izin runtime harus disetujui pengguna, dan SDK bisa saja tidak dipanggil. Bandingkan dengan bagian Keamanan Data di Google Play.") }
+        item { Text("Pelacak (${p.trackers.size})", style = MaterialTheme.typography.titleMedium) }
+        if (p.trackers.isEmpty()) item { Text("Tidak ada SDK iklan, analitik, atribusi, atau pelaporan crash yang dikenali.", style = MaterialTheme.typography.bodyMedium) }
+        items(p.trackers, key = { "tracker:${it.name}" }) { t -> LessonCard(t.name, "Tujuan: ${t.purpose}\nBukti: ${t.evidence.joinToString()}") }
+        item { Text("Data yang dapat diakses (${p.dataAccess.size})", style = MaterialTheme.typography.titleMedium) }
+        if (p.dataAccess.isEmpty()) item { Text("Tidak meminta izin untuk kategori data pribadi yang umum.", style = MaterialTheme.typography.bodyMedium) }
+        items(p.dataAccess, key = { "data:${it.category}" }) { d ->
+            LessonCard(d.category, d.explanation + "\n" + (if (d.runtimePrompt) "Pengguna ditanya saat aplikasi memintanya." else "Tidak muncul sebagai dialog izin biasa (diberikan saat instalasi atau lewat Pengaturan).") +
+                "\nIzin: " + d.permissions.joinToString { it.substringAfterLast('.') })
+        }
+        if (p.trackerHosts.isNotEmpty()) item { LessonCard("Alamat layanan pelacak (${p.trackerHosts.size})", p.trackerHosts.joinToString("\n") + "\nDitemukan di string aplikasi; lihat tab Jejak untuk lokasinya.") }
     }
 }
 

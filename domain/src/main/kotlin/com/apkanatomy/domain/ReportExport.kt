@@ -16,6 +16,12 @@ fun AnatomyReport.toMarkdown(now: Long): String = buildString {
     appendLine("- Versi: $version · minSdk $minSdk · targetSdk $targetSdk")
     appendLine("- Sumber: $source · dibuat ${date(now)} (UTC)")
     appendLine()
+    val privacy = privacyProfile()
+    appendLine("## Privasi")
+    appendLine(privacy.summary)
+    privacy.trackers.forEach { appendLine("- Pelacak **${it.name}** (${it.purpose})") }
+    privacy.dataAccess.forEach { appendLine("- Data: ${it.category} (${it.permissions.joinToString { p -> p.substringAfterLast('.') }})") }
+    appendLine()
     appendLine("## DNA & keamanan")
     appendLine("Skema tanda tangan: ${signing.schemes.joinToString { it.label }.ifEmpty { "tidak ditemukan" }}" +
         (if (signing.keyRotation) " · rotasi kunci" else ""))
@@ -131,6 +137,9 @@ fun AnatomyReport.toJson(now: Long): String = json(mapOf(
     "technologies" to structure.technologies.map { it.name },
     "sdks" to sdks.map { mapOf("name" to it.name, "category" to it.category, "versions" to it.versions, "evidence" to it.evidence) },
     "libraryVersions" to structure.libraryVersions,
+    "privacy" to privacyProfile().let { p -> mapOf("summary" to p.summary, "usesAdvertisingId" to p.usesAdvertisingId,
+        "trackers" to p.trackers.map { mapOf("name" to it.name, "purpose" to it.purpose) },
+        "dataAccess" to p.dataAccess.map { mapOf("category" to it.category, "permissions" to it.permissions) }, "trackerHosts" to p.trackerHosts) },
     "capabilities" to mapOf("features" to capabilities.features.map { mapOf("name" to it.name, "required" to it.required) },
         "glEsVersion" to capabilities.glEsVersion,
         "queries" to mapOf("packages" to capabilities.queries.packages, "intents" to capabilities.queries.intents, "providers" to capabilities.queries.providers),
