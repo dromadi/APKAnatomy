@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (ArchiveEntry) -> FilePreview,
     baseline: AnatomyReport? = null, clearBaseline: () -> Unit = {}) {
     var selectedTab by rememberSaveable(report.packageName, report.source) { mutableIntStateOf(0) }
-    val tabs = listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Isi APK", "Kode", "Manifest", "DNA", "Kulit", "Jejak") + listOfNotNull(baseline?.let { "Banding" })
+    val tabs = listOf("Ringkasan", "Teknologi", "Komponen", "Izin", "Kemampuan", "Isi APK", "Kode", "Manifest", "DNA", "Kulit", "Jejak") + listOfNotNull(baseline?.let { "Banding" })
     // The Banding tab disappears when the baseline is cleared.
     val tab = selectedTab.coerceAtMost(tabs.lastIndex)
     Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -56,6 +56,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
             "Teknologi" -> TechnologyScreen(report)
             "Komponen" -> ComponentsScreen(report)
             "Izin" -> PermissionsScreen(report)
+            "Kemampuan" -> CapabilitiesScreen(report.capabilities)
             "Isi APK" -> ArchiveBrowser(report.structure, loadPreview)
             "Kode" -> CodeExplorer(report.code)
             "Manifest" -> ManifestScreen(report)
@@ -375,6 +376,39 @@ private fun CompareScreen(old: AnatomyReport, new: AnatomyReport, clearBaseline:
                     color = if (change.attention) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
             }
         }
+    }
+}
+
+@Composable
+private fun CapabilitiesScreen(caps: Capabilities) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
+        item { LessonCard("Pelajari kemampuan", "Selain izin, manifest menyatakan perangkat keras yang dibutuhkan, aplikasi lain yang ingin dilihat, pekerjaan latar depan, library sistem, dan aturan backup. Google Play memakai fitur wajib untuk menyaring perangkat yang boleh memasang aplikasi.") }
+        caps.securityNotes().forEach { note -> item { NoteCard(note) } }
+        item {
+            LessonCard("Perangkat keras & fitur (${caps.features.size})", if (caps.features.isEmpty() && caps.glEsVersion == null) "Tidak menyatakan uses-feature." else
+                caps.features.joinToString("\n") { f -> "${f.name} · ${if (f.required) "wajib" else "opsional"}" + (featureLesson(f.name)?.let { " — $it" } ?: "") } +
+                    (caps.glEsVersion?.let { "\nOpenGL ES $it" } ?: ""))
+        }
+        item {
+            LessonCard("Foreground service (${caps.foregroundServices.size})", if (caps.foregroundServices.isEmpty()) "Tidak ada service dengan foregroundServiceType." else
+                "Sejak Android 14, setiap foreground service wajib menyatakan jenisnya; notifikasi tetap tampil selama berjalan.\n\n" +
+                    caps.foregroundServices.joinToString("\n\n") { s -> s.service + "\n" + s.types.joinToString("\n") { t -> "• $t" + (foregroundTypeLesson(t)?.let { " — $it" } ?: "") } })
+        }
+        item {
+            val q = caps.queries
+            LessonCard("Package visibility (queries)", if (q.isEmpty) "Tidak ada <queries>. Sejak Android 11 aplikasi hanya dapat melihat aplikasi lain yang dinyatakan di sini (atau dengan QUERY_ALL_PACKAGES)." else
+                "Sejak Android 11 aplikasi hanya dapat melihat aplikasi lain yang dinyatakan di sini. Daftar ini menunjukkan aplikasi atau layanan yang ingin diajak berinteraksi.\n" +
+                    listOfNotNull(q.packages.takeIf { it.isNotEmpty() }?.let { "\nPackage: " + it.joinToString() },
+                        q.intents.takeIf { it.isNotEmpty() }?.let { "\nIntent: " + it.joinToString("; ") },
+                        q.providers.takeIf { it.isNotEmpty() }?.let { "\nProvider: " + it.joinToString() }).joinToString(""))
+        }
+        item {
+            LessonCard("Aturan backup", if (caps.backupRules.isEmpty()) "Tidak ada file aturan backup; bila backup diizinkan, semua data aplikasi ikut kecuali yang dikecualikan sistem." else
+                caps.backupRuleFiles.joinToString() + "\n\n" + caps.backupRules.joinToString("\n") { r -> "${r.section}: ${if (r.include) "sertakan" else "kecualikan"} ${r.domain}/${r.path}" })
+        }
+        if (caps.libraries.isNotEmpty()) item { LessonCard("Library sistem (uses-library)", caps.libraries.joinToString("\n") { (n, req) -> "$n · ${if (req) "wajib" else "opsional"}" }) }
+        if (caps.grantUriProviders.isNotEmpty()) item { LessonCard("Provider dengan grantUriPermissions", caps.grantUriProviders.joinToString() + "\nProvider ini dapat memberi akses sementara ke URI tertentu kepada aplikasi lain, misalnya saat berbagi file.") }
+        items(caps.notes) { LessonCard("Hasil sebagian", it) }
     }
 }
 

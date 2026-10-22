@@ -62,6 +62,13 @@ fun compareReports(old: AnatomyReport, new: AnatomyReport, now: Long): List<Diff
         (ov.keys intersect nv.keys).sorted().mapNotNullTo(this) { changed(it, ov[it], nv[it]) }
         addAll(setDiff(ov.keys, nv.keys, { it }))
     }),
+    DiffSection("Kemampuan", buildList {
+        addAll(setDiff(old.capabilities.features.map { it.name }, new.capabilities.features.map { it.name }, { "Fitur $it" }))
+        addAll(setDiff(old.capabilities.foregroundServices.flatMap { s -> s.types.map { "${s.service}: $it" } },
+            new.capabilities.foregroundServices.flatMap { s -> s.types.map { "${s.service}: $it" } }, { "Foreground service $it" },
+            attention = { it.endsWith("location") || it.endsWith("camera") || it.endsWith("microphone") || it.endsWith("mediaProjection") }))
+        addAll(setDiff(old.capabilities.queries.packages, new.capabilities.queries.packages, { "Query package $it" }))
+    }),
     DiffSection("Jejak", buildList {
         addAll(setDiff(old.traces.hosts.map { it.host }, new.traces.hosts.map { it.host }, { "Host $it" }))
         addAll(setDiff(old.traces.secrets.map { "${it.type} ${it.masked}" }, new.traces.secrets.map { "${it.type} ${it.masked}" }, { it },

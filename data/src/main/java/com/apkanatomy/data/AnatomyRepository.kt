@@ -150,6 +150,7 @@ class AnatomyRepository(private val context: Context) {
             }, structure, code, manifestXml = manifest.xml, manifestNote = manifest.note,
             signing = signing, security = securityFlags(app, manifest), sdks = detectSdks(code.packages, structure.libraryVersions),
             iconPng = iconPng(app), networkSecurity = networkSecurity, traces = traces.result(), native = native,
+            capabilities = manifest.root?.let { CapabilitiesReader.read(it, baseApk, table) } ?: Capabilities(),
             resources = (table?.let { ResourceSummary(it.resourceCount, it.typeCounts().entries.sortedByDescending { e -> e.value }.associate { e -> e.key to e.value }, it.locales().toList(), nscNote) }
                 ?: tableNote?.let { ResourceSummary(0, emptyMap(), emptyList(), listOfNotNull(it, nscNote).joinToString(" ")) }))
     }

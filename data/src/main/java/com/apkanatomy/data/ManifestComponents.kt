@@ -8,11 +8,19 @@ private val ATTRIBUTE_IDS = mapOf(
     "name" to 0x01010003, "autoVerify" to 0x010104ee, "scheme" to 0x01010027, "host" to 0x01010028,
     "port" to 0x01010029, "path" to 0x0101002a, "pathPrefix" to 0x0101002b, "pathPattern" to 0x0101002c,
     "pathSuffix" to 0x0101061e, "pathAdvancedPattern" to 0x01010620, "mimeType" to 0x01010026,
+    "required" to 0x0101028e, "glEsVersion" to 0x01010281, "sharedUserId" to 0x0101000b, "taskAffinity" to 0x01010012,
+    "allowTaskReparenting" to 0x01010204, "foregroundServiceType" to 0x01010599, "grantUriPermissions" to 0x0101001b,
+    "requestLegacyExternalStorage" to 0x01010603, "dataExtractionRules" to 0x0101063e, "fullBackupContent" to 0x010104eb,
+    "authorities" to 0x01010018, "exported" to 0x01010010,
 )
 private val COMPONENT_TAGS = setOf("activity", "activity-alias", "service", "receiver", "provider")
 
-private fun XmlElement.android(name: String): String? =
+internal fun XmlElement.android(name: String): String? =
     attribute(name) ?: ATTRIBUTE_IDS[name]?.let { id -> attributes.firstOrNull { it.resourceId == id }?.value }
+
+/** The referenced resource ID of an android: attribute, with the same name/ID fallback. */
+internal fun XmlElement.androidReference(name: String): Int? =
+    (attributes.firstOrNull { it.name == name } ?: ATTRIBUTE_IDS[name]?.let { id -> attributes.firstOrNull { it.resourceId == id } })?.referenceId
 
 /** Intent-filters per fully qualified component name, as declared in the manifest. */
 internal fun intentFiltersByComponent(manifest: XmlElement): Map<String, List<IntentFilterInfo>> {

@@ -53,6 +53,13 @@ fun AnatomyReport.toMarkdown(now: Long): String = buildString {
     appendLine()
     appendLine("DEX: ${structure.dex.size} file · library native: ${structure.libraries.map { it.abi }.distinct().joinToString().ifEmpty { "tidak ada" }}")
     appendLine()
+    appendLine("## Kemampuan")
+    capabilities.features.forEach { appendLine("- Fitur `${it.name}`" + if (it.required) " (wajib)" else " (opsional)") }
+    capabilities.glEsVersion?.let { appendLine("- OpenGL ES $it") }
+    capabilities.foregroundServices.forEach { appendLine("- Foreground service `${md(it.service)}`: ${it.types.joinToString()}") }
+    if (!capabilities.queries.isEmpty) appendLine("- Queries: ${(capabilities.queries.packages + capabilities.queries.intents + capabilities.queries.providers).joinToString { md(it) }}")
+    capabilities.backupRules.forEach { appendLine("- Backup ${it.section}: ${if (it.include) "sertakan" else "kecualikan"} ${it.domain}/${md(it.path)}") }
+    appendLine()
     appendLine("## Library native")
     native.pageSizeNote()?.let { appendLine("**${it.level.name}** ${md(it.title)}: ${md(it.explanation)}") }
     native.libraries.forEach { lib ->
@@ -124,6 +131,15 @@ fun AnatomyReport.toJson(now: Long): String = json(mapOf(
     "technologies" to structure.technologies.map { it.name },
     "sdks" to sdks.map { mapOf("name" to it.name, "category" to it.category, "versions" to it.versions, "evidence" to it.evidence) },
     "libraryVersions" to structure.libraryVersions,
+    "capabilities" to mapOf("features" to capabilities.features.map { mapOf("name" to it.name, "required" to it.required) },
+        "glEsVersion" to capabilities.glEsVersion,
+        "queries" to mapOf("packages" to capabilities.queries.packages, "intents" to capabilities.queries.intents, "providers" to capabilities.queries.providers),
+        "libraries" to capabilities.libraries.map { mapOf("name" to it.first, "required" to it.second) },
+        "foregroundServices" to capabilities.foregroundServices.map { mapOf("service" to it.service, "types" to it.types) },
+        "sharedUserId" to capabilities.sharedUserId, "requestLegacyExternalStorage" to capabilities.requestLegacyExternalStorage,
+        "backupRules" to capabilities.backupRules.map { mapOf("section" to it.section, "include" to it.include, "domain" to it.domain, "path" to it.path) },
+        "foreignTaskAffinities" to capabilities.foreignTaskAffinities.map { mapOf("activity" to it.activity, "affinity" to it.affinity, "allowReparenting" to it.allowReparenting) },
+        "grantUriProviders" to capabilities.grantUriProviders),
     "native" to mapOf("extractNativeLibs" to native.extractNativeLibs, "pageSize16k" to native.pageSizeNote()?.level?.name,
         "libraries" to native.libraries.map { mapOf("archive" to it.archive, "path" to it.path, "abi" to it.abi, "machine" to it.machine, "bits" to it.bits,
             "minLoadAlign" to it.minLoadAlign, "stored" to it.stored, "zipDataOffset" to it.zipDataOffset, "soname" to it.soname, "needed" to it.needed,

@@ -75,6 +75,10 @@ internal fun richReport(): AnatomyReport {
         networkSecurity = NetworkSecurityConfig("res/8G.xml", base = NscScope(cleartextPermitted = false, trustAnchors = listOf("system")),
             domains = listOf(NscScope(listOf("*.api.contoh.id"), pins = 2, pinExpiration = "2030-01-01"))),
         resources = ResourceSummary(5120, mapOf("string" to 2100, "drawable" to 800, "layout" to 120), listOf("en", "in", "ms")),
+        capabilities = Capabilities(features = listOf(FeatureUse("android.hardware.camera", true), FeatureUse("android.hardware.nfc", false)),
+            queries = QueriesDecl(packages = listOf("com.whatsapp"), intents = listOf("VIEW https:")),
+            foregroundServices = listOf(ForegroundServiceUse("id.contoh.toko.delivery.TrackingService", listOf("location"))),
+            backupRuleFiles = listOf("res/xml/backup_rules.xml"), backupRules = listOf(BackupRule("cloud-backup", false, "sharedpref", "auth.xml"))),
         native = NativeReport(listOf(
             NativeLibInfo("base.apk", "lib/arm64-v8a/libflutter.so", "arm64-v8a", 11_200_000, "AArch64", 64, 4096, true, 4096, "libflutter.so",
                 listOf("libc.so", "libdl.so", "liblog.so"), emptyList(), true, false, false),

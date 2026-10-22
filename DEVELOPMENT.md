@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.15
+# APKAnatomy 0.1.0-alpha.16
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -191,3 +191,11 @@ Readiness for 16 KB page-size devices is judged for 64-bit libraries only: LOAD 
 Fixtures (`data/src/test/resources/elf`): native.c built with clang 18 and lld for android26 as arm64 with max-page-size 4096 and 16384, armv7, and an unstripped arm64 build, plus APKs aligned with `zipalign -P 16` and `zipalign -p`. Libraries are stored as `.so.bin` because AGP drops `*.so` from unit-test resources. Expected values match readelf and `zipalign -c -P 16`; the reader also matched readelf on a 32 MB real-world library (libLLVM_android.so from build-tools).
 
 Smoke test: open Teknologi for a Flutter or game app and check the 16 KB verdict against `zipalign -c -P 16` and `readelf -l`.
+
+## Alpha.16: capabilities beyond permissions
+
+A Kemampuan tab reads what the manifest asks of the device and platform: uses-feature (required or optional, with lessons for common hardware) and the OpenGL ES version, `<queries>` package visibility (packages, intents, providers), uses-library, foreground services with their types, backup rules, and providers with grantUriPermissions. Attribute values and IDs were taken from aapt2 output; foregroundServiceType bits were verified one by one (fileManagement is not part of the public SDK and is not listed). Backup rule files (dataExtractionRules, fullBackupContent) are located through resources.arsc with the same reader as the Network Security Config, so files renamed by R8 are still found (the F-Droid client ships them as `res/Lz.xml` and `res/Qq.xml`).
+
+DNA notes gain: an exported activity whose taskAffinity points to another package together with allowTaskReparenting (the StrandHogg task-hijacking pattern, PERHATIAN), other foreign task affinities, sharedUserId (deprecated, shares the Linux user ID) and requestLegacyExternalStorage. Capabilities are exported and part of the Banding diff (new location, camera, microphone or screen-capture foreground services are flagged).
+
+Fixture `data/src/test/resources/extras/extras.apk` is aapt2 output of the manifest and resources next to it.

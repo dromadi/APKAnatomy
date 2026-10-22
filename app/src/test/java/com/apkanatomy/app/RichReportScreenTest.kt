@@ -35,7 +35,7 @@ class RichReportScreenTest {
     @Test fun everyTabRenders() {
         show()
         compose.shot("rich_overview")
-        for ((tab, marker) in listOf("Teknologi" to "Google AdMob", "Komponen" to "PaymentActivity", "Izin" to "SYSTEM_ALERT_WINDOW",
+        for ((tab, marker) in listOf("Teknologi" to "Google AdMob", "Komponen" to "PaymentActivity", "Izin" to "SYSTEM_ALERT_WINDOW", "Kemampuan" to "TrackingService",
             "Isi APK" to "classes.dex", "Kode" to "Cari class", "Manifest" to "android:label", "DNA" to "Catatan audit", "Kulit" to "Kode DEX", "Jejak" to "Midtrans server key")) {
             compose.openTab(tab)
             compose.onNodeWithText(marker, substring = true, useUnmergedTree = true).assertExists()

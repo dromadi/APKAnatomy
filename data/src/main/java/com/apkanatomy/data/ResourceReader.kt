@@ -36,17 +36,26 @@ internal object ResourceReader {
         val attribute = application?.attributes?.firstOrNull { it.name == "networkSecurityConfig" || it.resourceId == NETWORK_SECURITY_CONFIG_ATTR }
             ?: return null to null
         val id = attribute.referenceId ?: return null to "Nilai networkSecurityConfig bukan referensi resource."
-        val path = table?.value(id) ?: return null to "Lokasi file Network Security Config tidak dapat ditentukan tanpa resources.arsc."
+        val (xml, note) = xmlResource(apk, id, table, "Network Security Config")
+        return xml?.let { (path, root) -> parseNetworkSecurityConfig(root, path) } to note
+    }
+
+    /**
+     * Locates a compiled XML resource through the table (R8 may have renamed the file) and decodes it.
+     * Returns (path, root) or a user-facing note naming [what].
+     */
+    fun xmlResource(apk: File, id: Int, table: ResourceTable?, what: String): Pair<Pair<String, XmlElement>?, String?> {
+        val path = table?.value(id) ?: return null to "Lokasi file $what tidak dapat ditentukan tanpa resources.arsc."
         return try {
             ZipFile(apk).use { zip ->
-                val entry = zip.getEntry(path) ?: return null to "File Network Security Config $path tidak ada di APK."
-                val bytes = bounded(zip, entry, MAX_XML_BYTES) ?: return null to "File Network Security Config melebihi 1 MiB."
-                parseNetworkSecurityConfig(AxmlDecoder.decode(bytes, table), path) to null
+                val entry = zip.getEntry(path) ?: return null to "File $what $path tidak ada di APK."
+                val bytes = bounded(zip, entry, MAX_XML_BYTES) ?: return null to "File $what melebihi 1 MiB."
+                (path to AxmlDecoder.decode(bytes, table)) to null
             }
         } catch (e: AxmlException) {
-            null to "Network Security Config tidak dapat didekode: ${e.message}"
+            null to "$what tidak dapat didekode: ${e.message}"
         } catch (e: IOException) {
-            null to "Network Security Config tidak dapat dibaca: ${e.message}"
+            null to "$what tidak dapat dibaca: ${e.message}"
         }
     }
 
