@@ -13,7 +13,7 @@ data class NativeLibInfo(
     val jniMethods: List<String>, val hasJniOnLoad: Boolean,
     val hasSymbolTable: Boolean, val hasDebugInfo: Boolean,
     val note: String? = null,
-) {
+) : java.io.Serializable {
     val is64Bit: Boolean get() = bits == 64
     val elfAligned16k: Boolean? get() = minLoadAlign?.let { it >= PAGE_16K }
     val zipAligned16k: Boolean? get() = if (stored) zipDataOffset?.let { it % PAGE_16K == 0L } else null
@@ -24,7 +24,7 @@ data class NativeReport(
     /** android:extractNativeLibs as the package manager reports it; null when unknown. */
     val extractNativeLibs: Boolean? = null,
     val warnings: List<String> = emptyList(),
-)
+) : java.io.Serializable
 
 const val PAGE_16K = 16_384L
 

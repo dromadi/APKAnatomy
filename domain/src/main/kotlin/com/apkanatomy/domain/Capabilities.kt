@@ -1,13 +1,13 @@
 package com.apkanatomy.domain
 
-data class FeatureUse(val name: String, val required: Boolean)
-data class QueriesDecl(val packages: List<String> = emptyList(), val intents: List<String> = emptyList(), val providers: List<String> = emptyList()) {
+data class FeatureUse(val name: String, val required: Boolean) : java.io.Serializable
+data class QueriesDecl(val packages: List<String> = emptyList(), val intents: List<String> = emptyList(), val providers: List<String> = emptyList()) : java.io.Serializable {
     val isEmpty: Boolean get() = packages.isEmpty() && intents.isEmpty() && providers.isEmpty()
 }
-data class ForegroundServiceUse(val service: String, val types: List<String>)
+data class ForegroundServiceUse(val service: String, val types: List<String>) : java.io.Serializable
 /** One rule of a backup configuration; [section] is cloud-backup, device-transfer or full-backup-content. */
-data class BackupRule(val section: String, val include: Boolean, val domain: String, val path: String)
-data class TaskAffinityUse(val activity: String, val affinity: String, val allowReparenting: Boolean, val exported: Boolean)
+data class BackupRule(val section: String, val include: Boolean, val domain: String, val path: String) : java.io.Serializable
+data class TaskAffinityUse(val activity: String, val affinity: String, val allowReparenting: Boolean, val exported: Boolean) : java.io.Serializable
 
 /** What the app asks of the device and the platform beyond components and permissions. */
 data class Capabilities(
@@ -27,7 +27,7 @@ data class Capabilities(
     val foreignTaskAffinities: List<TaskAffinityUse> = emptyList(),
     val grantUriProviders: List<String> = emptyList(),
     val notes: List<String> = emptyList(),
-)
+) : java.io.Serializable
 
 // Bits of android:foregroundServiceType, verified against aapt2 for the public SDK.
 private val FOREGROUND_TYPES = listOf(0x1 to "dataSync", 0x2 to "mediaPlayback", 0x4 to "phoneCall", 0x8 to "location",

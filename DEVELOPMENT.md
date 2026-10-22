@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.18
+# APKAnatomy 0.1.0-alpha.19
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -220,3 +220,13 @@ Every host and key candidate in Jejak now lists the methods that load it with `c
 - The Kode tab gains a String mode that searches string literals (minimum two characters) and shows the method that loads each one.
 
 On the F-Droid client all 32 hosts link to at least one method; the extra pass costs about 0.5 s warm on that APK.
+
+## Alpha.19: analysis history, staged progress and cancel
+
+Every finished analysis is saved automatically to an on-device history (app-private storage; backups are disabled for the app). The home screen switches between "Aplikasi terinstal" and "Riwayat", where each entry can be opened again without re-analysing, used as the Banding baseline, or deleted.
+
+- `HistoryStore` (data) writes one gzip file per report: a small header for the list, then the Java-serialized report. Reading only resolves `com.apkanatomy.domain`, `java.lang`, `java.util` and `kotlin` classes. At most 20 entries are kept, a newer analysis of the same package, version and source replaces the older one, and files above 8 MiB are not saved. Unreadable files (corrupt, or from an incompatible older build) are deleted.
+- `forHistory()` (domain) drops the code listing, including the raw string literals that may hold unmasked secrets; the manifest and every other section stay. A report opened from history says so under its header and in the Kode tab, and its "Dipakai di" links are shown as outside the code index.
+- Analyses report seven steps (`ANALYSIS_STEPS`), shown as "Langkah n/7" with a determinate bar and a Batal button. Cancelling stops at the next check: between steps, inside the DEX, asset and native scans, and about once per MiB while copying a picked file. An import folder of a cancelled analysis is deleted.
+
+`HistoryScreenTest` round-trips the full sample report through the store, which fails if any class reachable from `AnatomyReport` is not serializable.

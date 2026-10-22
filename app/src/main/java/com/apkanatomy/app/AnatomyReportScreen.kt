@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
+import com.apkanatomy.data.HistoryStore
 import com.apkanatomy.domain.*
 import java.util.Locale
 import kotlinx.coroutines.launch
@@ -46,6 +47,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
             Text(report.label, style = MaterialTheme.typography.titleLarge)
             Text(report.packageName, style = MaterialTheme.typography.bodySmall)
             Text((if (report.version == "—") "versi tidak tercantum" else "v${report.version}") + " · min SDK ${report.minSdk} · target ${report.targetSdk}")
+            if (report.source.startsWith(HistoryStore.FROM_HISTORY)) Text(report.source, style = MaterialTheme.typography.labelSmall)
         }
     }
     PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {

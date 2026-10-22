@@ -11,7 +11,7 @@ data class SignerCertificate(
     val sha256: String, val sha1: String, val md5: String,
     /** Where the certificate appears, e.g. "v1", "v3 (API 24–32)". */
     val foundIn: List<String>,
-) {
+) : java.io.Serializable {
     val isAndroidDebug: Boolean get() = subject.contains("CN=Android Debug")
 }
 
@@ -27,14 +27,14 @@ data class SigningReport(
     val warnings: List<String> = emptyList(),
     /** Split APKs whose signer differs from the base (or that are unsigned); Android refuses such a set. */
     val mismatchedSplits: List<String> = emptyList(),
-)
+) : java.io.Serializable
 
 data class SecurityFlags(
     val debuggable: Boolean, val allowBackup: Boolean, val cleartextTraffic: Boolean,
     val testOnly: Boolean, val targetSdk: Int,
     /** Resource reference of android:networkSecurityConfig, if declared. */
     val networkSecurityConfig: String? = null,
-)
+) : java.io.Serializable
 
 /** One scope of a Network Security Config: base-config, a domain-config, or debug-overrides. */
 data class NscScope(
@@ -48,7 +48,7 @@ data class NscScope(
     val pinExpiration: String? = null,
     /** <certificateTransparency enabled="..."> when declared (newer platform versions). */
     val certificateTransparency: Boolean? = null,
-)
+) : java.io.Serializable
 
 data class NetworkSecurityConfig(
     /** Path inside the APK; R8 may have shortened it (e.g. res/8G.xml). */
@@ -56,10 +56,10 @@ data class NetworkSecurityConfig(
     val base: NscScope? = null,
     val domains: List<NscScope> = emptyList(),
     val debugOverrides: NscScope? = null,
-)
+) : java.io.Serializable
 
 enum class NoteLevel { BAIK, INFO, PERHATIAN }
-data class SecurityNote(val level: NoteLevel, val title: String, val explanation: String)
+data class SecurityNote(val level: NoteLevel, val title: String, val explanation: String) : java.io.Serializable
 
 /** Educational reading of the signing and manifest flags; observations, not a vulnerability verdict. */
 fun securityNotes(flags: SecurityFlags?, signing: SigningReport, now: Long, nsc: NetworkSecurityConfig? = null): List<SecurityNote> = buildList {

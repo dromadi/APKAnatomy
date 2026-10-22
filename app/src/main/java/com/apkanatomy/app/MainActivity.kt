@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.ImageBitmap
@@ -28,6 +29,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.apkanatomy.data.ANALYSIS_STEPS
+import com.apkanatomy.data.HistoryEntry
 import com.apkanatomy.domain.*
 
 class MainActivity : ComponentActivity() {
@@ -62,12 +65,63 @@ private fun AnatomyApp(model: AnatomyViewModel) {
                 Button(onClick = { picker.launch(arrayOf("*/*")) }, enabled = !state.busy) { Text("Buka APK / bundle") }
                 if (state.report == null) TextButton(onClick = { model.reload() }, enabled = !state.busy) { Text("Muat ulang") }
             }
-            if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            val step = state.step
+            if (step != null) AnalysisProgress(step, model::cancel)
+            else if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp)) }
+            state.info?.let { Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 8.dp)) }
             val report = state.report
-            if (report == null) AppList(state.apps, state.busy, model::inspect)
+            if (report == null) {
+                var showHistory by rememberSaveable { mutableStateOf(false) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                    FilterChip(selected = !showHistory, onClick = { showHistory = false }, label = { Text("Aplikasi terinstal") })
+                    FilterChip(selected = showHistory, onClick = { showHistory = true }, label = { Text("Riwayat (${state.history.size})") })
+                }
+                if (showHistory) HistoryList(state.history, state.busy, model::openHistory, model::baselineFromHistory, model::deleteHistory, model::clearHistory)
+                else AppList(state.apps, state.busy, model::inspect)
+            }
             else AnatomyReportScreen(report, model::preview, state.baseline.takeUnless { state.reportIsBaseline }, model::clearBaseline)
         }
+    }
+}
+
+/** Which step of ANALYSIS_STEPS is running, with a cancel button. */
+@Composable
+internal fun AnalysisProgress(step: Int, cancel: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Langkah ${step + 1}/${ANALYSIS_STEPS.size}: ${ANALYSIS_STEPS[step]}…", style = MaterialTheme.typography.bodyMedium)
+            LinearProgressIndicator(progress = { (step + 1f) / ANALYSIS_STEPS.size }, modifier = Modifier.fillMaxWidth())
+        }
+        OutlinedButton(onClick = cancel) { Text("Batal") }
+    }
+}
+
+@Composable
+internal fun HistoryList(history: List<HistoryEntry>, busy: Boolean, open: (String) -> Unit, asBaseline: (String) -> Unit,
+    delete: (String) -> Unit, clear: () -> Unit) {
+    val format = remember { java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT) }
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+        item {
+            Text("Laporan yang pernah dianalisis disimpan otomatis di perangkat ini (maksimal 20), tanpa daftar kode. " +
+                "Buka untuk membaca lagi tanpa analisis ulang, atau jadikan pembanding untuk melihat perubahan antarversi.", style = MaterialTheme.typography.bodySmall)
+        }
+        if (history.isEmpty()) item { Text("Belum ada riwayat. Analisis aplikasi atau APK, lalu laporannya muncul di sini.") }
+        items(history, key = { it.id }) { entry ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(start = 16.dp, top = 12.dp, end = 8.dp, bottom = 4.dp)) {
+                    Text(entry.label, style = MaterialTheme.typography.titleMedium)
+                    Text("${entry.packageName} · ${entry.version}", style = MaterialTheme.typography.bodySmall)
+                    Text("${entry.source} · ${format.format(java.util.Date(entry.savedAt))} · ${entry.bytes / 1024} KB", style = MaterialTheme.typography.labelSmall)
+                    Row {
+                        TextButton(onClick = { open(entry.id) }, enabled = !busy) { Text("Buka") }
+                        TextButton(onClick = { asBaseline(entry.id) }, enabled = !busy) { Text("Jadikan pembanding") }
+                        TextButton(onClick = { delete(entry.id) }, enabled = !busy) { Text("Hapus") }
+                    }
+                }
+            }
+        }
+        if (history.isNotEmpty()) item { TextButton(onClick = clear, enabled = !busy) { Text("Hapus semua riwayat") } }
     }
 }
 

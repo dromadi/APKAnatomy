@@ -17,5 +17,14 @@ class BoundedCopyTest {
             fail("Expected size rejection")
         } catch (_: IllegalArgumentException) { assertEquals(8192, output.size()) }
     }
+    @Test fun checksForCancellationWhileCopying() {
+        var checks = 0
+        try {
+            copyBounded(ByteArrayInputStream(ByteArray(3 * 1024 * 1024)), ByteArrayOutputStream(), 8L * 1024 * 1024) {
+                if (++checks == 2) throw java.util.concurrent.CancellationException()
+            }
+            fail("Expected cancellation")
+        } catch (_: java.util.concurrent.CancellationException) { assertEquals(2, checks) }
+    }
     @Test fun handlesEmptyInput() { assertEquals(0L, copyBounded(ByteArrayInputStream(byteArrayOf()), ByteArrayOutputStream(), 1)) }
 }

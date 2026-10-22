@@ -3,8 +3,8 @@ package com.apkanatomy.domain
 enum class ChangeKind(val symbol: String) { DITAMBAH("+"), DIHAPUS("−"), BERUBAH("~") }
 
 /** One difference; [attention] marks changes worth a closer look (a new sensitive permission, a new signer...). */
-data class Change(val kind: ChangeKind, val text: String, val attention: Boolean = false)
-data class DiffSection(val title: String, val changes: List<Change>)
+data class Change(val kind: ChangeKind, val text: String, val attention: Boolean = false) : java.io.Serializable
+data class DiffSection(val title: String, val changes: List<Change>) : java.io.Serializable
 
 /** A report without the heavy parts (code listing, raw manifest), small enough to keep as a comparison baseline. */
 fun AnatomyReport.asBaseline(): AnatomyReport = copy(

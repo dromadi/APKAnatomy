@@ -6,7 +6,7 @@ data class DetectedSdk(
     val evidence: List<String>, val packageCount: Int,
     /** From a META-INF version file when the library ships one, e.g. "firebase-messaging 24.1.0". */
     val versions: List<String> = emptyList(),
-)
+) : java.io.Serializable
 
 private class SdkRule(val name: String, val category: String, val explanation: String,
     val packages: List<String>, val artifacts: List<String> = emptyList())

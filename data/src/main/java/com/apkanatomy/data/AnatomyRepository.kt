@@ -11,6 +11,10 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.zip.ZipFile
 
+/** Steps of an analysis, in order, as shown in the progress indicator. */
+val ANALYSIS_STEPS = listOf("Menyiapkan file", "Membaca struktur arsip", "Mengindeks kode DEX & string", "Memeriksa tanda tangan",
+    "Membaca manifest & resource", "Memindai jejak di resource & assets", "Membaca library native")
+
 @Suppress("DEPRECATION")
 class AnatomyRepository(private val context: Context) {
     private val pm = context.packageManager
@@ -36,21 +40,21 @@ class AnatomyRepository(private val context: Context) {
         }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
     }
 
-    suspend fun analyzeInstalled(packageName: String): AnatomyReport = withContext(Dispatchers.IO) {
+    /** [onStep] receives the index into [ANALYSIS_STEPS] of each step as it starts. */
+    suspend fun analyzeInstalled(packageName: String, onStep: (Int) -> Unit = {}): AnatomyReport = withContext(Dispatchers.IO) {
+        onStep(0)
         val info = pm.getPackageInfo(packageName, flags)
         val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
         val paths = listOfNotNull(app.sourceDir) + app.splitSourceDirs.orEmpty().toList()
-        val context = coroutineContext
         val files = paths.map(::File)
         release()
         archives = files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap()
-        val traces = TraceCollector()
-        report(info, "Aplikasi terinstal", StructureScanner().scan(files), DexCodeScanner().scan(files, info.packageName, traces) { context.ensureActive() },
-            files, scanSigning(File(app.sourceDir), files.drop(1), File(app.sourceDir + ".idsig")), traces)
+        report(info, "Aplikasi terinstal", files, null, onStep) { scanSigning(File(app.sourceDir), files.drop(1), File(app.sourceDir + ".idsig")) }
     }
 
     /** Analyzes a single APK or a split bundle (.apks, .xapk, .apkm) picked through the Storage Access Framework. */
-    suspend fun analyzeFile(uri: Uri): AnatomyReport = withContext(Dispatchers.IO) {
+    suspend fun analyzeFile(uri: Uri, onStep: (Int) -> Unit = {}): AnatomyReport = withContext(Dispatchers.IO) {
+        onStep(0)
         release()
         val work = File(context.cacheDir, "inspection-${java.util.UUID.randomUUID()}").apply { mkdirs() }
         var kept = false
@@ -58,7 +62,8 @@ class AnatomyRepository(private val context: Context) {
             val imported = File(work, "import.apk")
             val input = context.contentResolver.openInputStream(uri)
                 ?: error("File tidak dapat dibuka.")
-            input.use { source -> imported.outputStream().use { copyBounded(source, it, 512L * 1024 * 1024) } }
+            val job = coroutineContext
+            input.use { source -> imported.outputStream().use { copyBounded(source, it, 512L * 1024 * 1024) { job.ensureActive() } } }
             val isApk = try { ZipFile(imported).use { it.getEntry("AndroidManifest.xml") != null } }
                 catch (_: java.util.zip.ZipException) { error("File bukan APK atau bundle APK (bukan arsip ZIP).") }
             val (base, splits, bundle) = if (isApk) {
@@ -80,12 +85,8 @@ class AnatomyRepository(private val context: Context) {
                 splitSourceDirs = splits.map { it.absolutePath }.toTypedArray().takeIf { it.isNotEmpty() }
             }
             val files = listOf(base) + splits
-            val context = coroutineContext
-            val structure = StructureScanner().scan(files).let { it.copy(warnings = bundle?.skipped.orEmpty() + it.warnings) }
             val source = bundle?.let { "${it.format} (${files.size} APK)" } ?: "File APK lokal"
-            val traces = TraceCollector()
-            report(info, source, structure, DexCodeScanner().scan(files, info.packageName, traces) { context.ensureActive() },
-                files, scanSigning(base, splits, v4Signature = null), traces).also {
+            report(info, source, files, bundle?.skipped.orEmpty(), onStep) { scanSigning(base, splits, v4Signature = null) }.also {
                 retainedImport = work
                 archives = files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap()
                 kept = true
@@ -111,18 +112,30 @@ class AnatomyRepository(private val context: Context) {
         retainedImport = null
     }
 
-    /** [files] is the base APK followed by its splits. */
-    private suspend fun report(info: PackageInfo, source: String, structure: PackageStructure, code: CodeIndex,
-        files: List<File>, signing: SigningReport, traces: TraceCollector): AnatomyReport {
+    /** [files] is the base APK followed by its splits; [skipped] are bundle entries that were not extracted. */
+    private suspend fun report(info: PackageInfo, source: String, files: List<File>, skipped: List<String>?,
+        onStep: (Int) -> Unit, signingOf: () -> SigningReport): AnatomyReport {
+        val context = coroutineContext
+        fun step(index: Int) { context.ensureActive(); onStep(index) }
+        step(1)
+        val structure = StructureScanner().scan(files).let { if (skipped.isNullOrEmpty()) it else it.copy(warnings = skipped + it.warnings) }
+        step(2)
+        val traces = TraceCollector()
+        val code = DexCodeScanner().scan(files, info.packageName, traces) { context.ensureActive() }
+        step(3)
+        val signing = signingOf()
+        step(4)
         val baseApk = files.first()
         val (table, tableNote) = ResourceReader.read(baseApk)
         val manifest = ManifestReader.read(baseApk, table)
-        val context = coroutineContext
+        step(5)
         TraceSources.scanResources(table, traces)
         TraceSources.scanManifest(manifest.application, traces)
         val labeled = files.mapIndexed { i, f -> (if (i == 0) "base.apk" else f.name) to f }.toMap()
         TraceSources.scanFiles(labeled, traces) { context.ensureActive() }
+        step(6)
         val native = NativeScanner().scan(labeled, info.applicationInfo?.let { it.flags and ApplicationInfo.FLAG_EXTRACT_NATIVE_LIBS != 0 }) { context.ensureActive() }
+        context.ensureActive()
         val (networkSecurity, nscNote) = ResourceReader.networkSecurityConfig(baseApk, manifest.application, table)
         val app = info.applicationInfo ?: error("Informasi aplikasi tidak tersedia.")
         val components = buildList {

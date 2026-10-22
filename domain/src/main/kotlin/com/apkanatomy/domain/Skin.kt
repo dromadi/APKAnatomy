@@ -10,7 +10,7 @@ enum class SizeCategory(val label: String, val lesson: String) {
     OTHER("Lainnya", "File lain di akar arsip atau folder khusus."),
 }
 
-data class SizeSlice(val category: SizeCategory, val files: Int, val size: Long, val compressedSize: Long)
+data class SizeSlice(val category: SizeCategory, val files: Int, val size: Long, val compressedSize: Long) : java.io.Serializable
 
 fun categorize(path: String): SizeCategory = when {
     Regex("classes([0-9]+)?\\.dex").matches(path) -> SizeCategory.DEX
@@ -28,7 +28,7 @@ fun sizeBreakdown(entries: List<ArchiveEntry>): List<SizeSlice> =
         .map { (category, files) -> SizeSlice(category, files.size, files.sumOf { it.size }, files.sumOf { it.compressedSize.coerceAtLeast(0) }) }
         .filter { it.size > 0 }.sortedByDescending { it.size }
 
-data class FileGroup(val title: String, val explanation: String, val files: List<ArchiveEntry>)
+data class FileGroup(val title: String, val explanation: String, val files: List<ArchiveEntry>) : java.io.Serializable
 
 private class FileRule(val title: String, val explanation: String, val matches: (String) -> Boolean)
 private fun ext(path: String) = path.substringAfterLast('/').substringAfterLast('.', "").lowercase()

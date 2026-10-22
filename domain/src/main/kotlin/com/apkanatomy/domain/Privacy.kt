@@ -1,10 +1,10 @@
 package com.apkanatomy.domain
 
 /** A bundled SDK whose job involves collecting usage or device data. */
-data class Tracker(val name: String, val purpose: String, val evidence: List<String>)
+data class Tracker(val name: String, val purpose: String, val evidence: List<String>) : java.io.Serializable
 
 /** A kind of personal data the app can ask for, with the permissions that grant it. */
-data class DataAccess(val category: String, val explanation: String, val permissions: List<String>, val runtimePrompt: Boolean)
+data class DataAccess(val category: String, val explanation: String, val permissions: List<String>, val runtimePrompt: Boolean) : java.io.Serializable
 
 data class PrivacyProfile(
     val trackers: List<Tracker>,
@@ -13,7 +13,7 @@ data class PrivacyProfile(
     val trackerHosts: List<String>,
     val usesAdvertisingId: Boolean,
     val summary: String,
-)
+) : java.io.Serializable
 
 private val TRACKER_PURPOSE = mapOf(
     "Google AdMob" to "Iklan", "Meta Audience Network" to "Iklan", "AppLovin" to "Iklan", "Unity Ads" to "Iklan", "ironSource" to "Iklan",

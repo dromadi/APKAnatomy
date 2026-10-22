@@ -7,19 +7,19 @@ data class EndpointHost(
     val examples: List<String>, val locations: List<String>, val count: Int,
     /** IDs of indexed methods that load a string pointing to this host (const-string). */
     val usedBy: List<String> = emptyList(),
-)
+) : java.io.Serializable
 
 /** A string that looks like a key or token. Only a masked form is ever stored. */
 data class SecretFinding(val type: String, val level: NoteLevel, val lesson: String, val masked: String, val locations: List<String>,
     /** IDs of indexed methods that load the value (const-string). */
-    val usedBy: List<String> = emptyList())
+    val usedBy: List<String> = emptyList()) : java.io.Serializable
 
 data class TraceReport(
     val hosts: List<EndpointHost> = emptyList(),
     val secrets: List<SecretFinding> = emptyList(),
     val scannedStrings: Int = 0,
     val notes: List<String> = emptyList(),
-)
+) : java.io.Serializable
 
 /** [hints]: cheap substrings, at least one of which every match contains; the regex only runs when one is present. */
 private class SecretRule(val type: String, val level: NoteLevel, val lesson: String, val hints: List<String>, val pattern: Regex, val keep: Int = 6) {
