@@ -126,6 +126,7 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                         var truncated = false
                         val sensitiveCalls = ArrayList<Pair<String, String>>()
                         val strs = ArrayList<String>()
+                        val ints = ArrayList<Long>()
                         if (implementation != null) {
                             for (instruction in implementation.instructions) {
                                 if (visited >= limits.visitedInstructions) { warnings.add("Batas pemindaian instruksi tercapai; Find usage hanya mencakup instruksi terbaca."); truncated = true; complete = false; break }
@@ -141,6 +142,7 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                                     if (strings.size < limits.strings) strings.add(StringUse(id, literal.take(300)))
                                     else warnings.add("Batas ${limits.strings} string literal tercapai; pencarian string hanya sebagian.")
                                 }
+                                if (ints.size < MAX_METHOD_STRINGS) literal(instruction)?.let { ints += it }
                                 if (instruction.opcode.name.startsWith("invoke", ignoreCase = true) && instruction is ReferenceInstruction && instruction.reference is MethodReference) {
                                     val target = instruction.reference as MethodReference
                                     if (behaviors != null && behaviors.watches(target.definingClass)) sensitiveCalls.add(target.definingClass to target.name)
@@ -151,7 +153,7 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                             }
                         }
                         if (behaviors != null && complete) {
-                            behaviors.method(id, sensitiveCalls, strs, count)
+                            behaviors.method(id, sensitiveCalls, strs, count, ints)
                             pattern(cls, method)?.let { behaviors.pattern(it, id) }
                             current.reported.add(id)
                         }
@@ -179,6 +181,7 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                         val id = "${current.archive}:${current.name}:${ReferenceUtil.getMethodDescriptor(method)}"
                         val sensitiveCalls = ArrayList<Pair<String, String>>(0)
                         val strs = ArrayList<String>(0)
+                        val ints = ArrayList<Long>(0)
                         var count = 0
                         for (instruction in implementation.instructions) {
                             if (++xrefVisited > limits.xrefInstructions) {
@@ -188,6 +191,7 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                             }
                             if (xrefVisited % 4096 == 0) checkCancelled()
                             count++
+                            if (behaviors != null && ints.size < MAX_METHOD_STRINGS) literal(instruction)?.let { ints += it }
                             if (instruction !is ReferenceInstruction) continue
                             when (val reference = instruction.reference) {
                                 is StringReference -> {
@@ -198,7 +202,7 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                             }
                         }
                         if (behaviors != null && id !in current.reported) {
-                            behaviors.method(id, sensitiveCalls, strs, count)
+                            behaviors.method(id, sensitiveCalls, strs, count, ints)
                             pattern(cls, method)?.let { behaviors.pattern(it, id) }
                         }
                     }
@@ -211,6 +215,14 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
 }
 
 private const val MAX_METHOD_STRINGS = 64
+
+/** The value of a const/const-wide instruction, for rules that look at flag constants. */
+private fun literal(instruction: Instruction): Long? = when {
+    !instruction.opcode.name.startsWith("const", ignoreCase = true) -> null
+    instruction is WideLiteralInstruction -> instruction.wideLiteral
+    instruction is NarrowLiteralInstruction -> instruction.narrowLiteral.toLong() and 0xffffffffL
+    else -> null
+}
 
 /** A DEX file held in memory between the scan phases; [indexedTypes] were read completely while indexing. */
 private class LoadedDex(val archive: String, val name: String, val dex: DexBackedDexFile) {

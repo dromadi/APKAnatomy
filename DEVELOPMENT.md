@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.37
+# APKAnatomy 0.1.0-alpha.38
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -395,3 +395,15 @@ Cards in the Komponen tab can now be tried out, the way another app could:
 - The outcome is explained under the buttons: opened, refused by the system (with the protecting permission when known; "this is the protection working"), or not found (the app is not installed, e.g. for a report of an APK file).
 
 Starting goes through `LocalIntentLauncher`, so the UI test captures the exact intents (action, URI, package, class) instead of leaving the screen. Smoke test on a device: open an installed app with an App Link, tap its "Coba https://…" button, and the app (or the link chooser, if the domain is not verified) should open.
+
+## Alpha.38: constant-aware security rules
+
+The code scanner now records the literal constants each method loads (`const*` instructions, both passes), so a rule can depend on the value passed and not only on the API called. `BehaviorRule` gained `ints` (a predicate on those constants) and `alsoCalls` (another owner prefix that must be called in the same method). New rules:
+
+- **PendingIntent yang dapat diubah** (INFO): `PendingIntent.getActivity/getBroadcast/getService/…` in a method that loads a pure flag word with `FLAG_MUTABLE` (0x02000000) set, `FLAG_IMMUTABLE` clear and nothing in the low 24 bits (so `-1` or a colour does not count).
+- **Debugging WebView diaktifkan** (INFO): `WebView.setWebContentsDebuggingEnabled` with the constant `1`.
+- **Random biasa dipakai di kode kriptografi** (PERHATIAN): `java.util.Random` created or used in a method that also calls `javax.crypto`.
+- **Klien HTTP Apache lama** (INFO): `DefaultHttpClient` constructed.
+- **Memakai penyimpanan bersama** (INFO): `Environment.getExternalStorageDirectory/getExternalStoragePublicDirectory`.
+
+A planned rule for dynamically registered receivers without an export flag was dropped: `registerReceiver(…, flags)` overloads cannot be told apart from the flags alone without data-flow analysis. Checked on F-Droid: the mutable PendingIntents found are in `SessionInstallManager` (PackageInstaller needs a mutable sender) and AppCompat's `SearchView`, both correct.

@@ -27,7 +27,11 @@ data class BehaviorReport(
 private class BehaviorRule(val id: String, val category: String, val title: String, val level: NoteLevel, val lesson: String,
     val owner: String?, val method: Set<String>?, val string: ((String) -> Boolean)? = null,
     /** A condition on all strings the method loads, for rules a single string cannot decide. */
-    val strings: ((List<String>) -> Boolean)? = null) {
+    val strings: ((List<String>) -> Boolean)? = null,
+    /** A condition on the integer constants the method loads (const instructions), e.g. a flag bit. */
+    val ints: ((List<Long>) -> Boolean)? = null,
+    /** The method must also call a type whose descriptor starts with this, e.g. "Ljavax/crypto/". */
+    val alsoCalls: String? = null) {
     /** "Landroid/provider/Settings$Secure;" → "Settings.Secure". */
     val ownerName: String get() = owner.orEmpty().removePrefix("L").removeSuffix(";").substringAfterLast('/').replace('$', '.')
 }
@@ -69,6 +73,12 @@ private val RULES = listOf(
     BehaviorRule("file-url-access", WEB, "WebView boleh membaca file dari halaman file://", NoteLevel.PERHATIAN,
         "setAllowFileAccessFromFileURLs/setAllowUniversalAccessFromFileURLs mengizinkan halaman lokal membaca file lain atau situs mana pun; bila diaktifkan, HTML berbahaya dapat mencuri data aplikasi.",
         "Landroid/webkit/WebSettings;", setOf("setAllowFileAccessFromFileURLs", "setAllowUniversalAccessFromFileURLs")),
+    BehaviorRule("webview-debug", WEB, "Debugging WebView diaktifkan", NoteLevel.INFO,
+        "setWebContentsDebuggingEnabled(true) membuat isi WebView dapat diperiksa dari Chrome DevTools lewat USB; seharusnya hanya di build debug.",
+        "Landroid/webkit/WebView;", setOf("setWebContentsDebuggingEnabled"), ints = { 1L in it }),
+    BehaviorRule("apache-http", TLS, "Klien HTTP Apache lama", NoteLevel.INFO,
+        "DefaultHttpClient sudah dihapus dari Android sejak API 23 dan tidak mendapat perbaikan keamanan; aplikasi membawanya sendiri.",
+        "Lorg/apache/http/impl/client/DefaultHttpClient;", setOf("<init>")),
     BehaviorRule("ssl-proceed", TLS, "Mengabaikan error sertifikat di WebView", NoteLevel.PERHATIAN,
         "SslErrorHandler.proceed() melanjutkan pemuatan meski sertifikat tidak sah, sehingga lalu lintas WebView bisa disadap (man-in-the-middle). Google Play menolak aplikasi dengan pola ini.",
         "Landroid/webkit/SslErrorHandler;", setOf("proceed")),
@@ -87,6 +97,9 @@ private val RULES = listOf(
     BehaviorRule("weak-hash", CRYPTO, "Hash MD5/SHA-1", NoteLevel.INFO,
         "MD5 dan SHA-1 tidak lagi aman untuk tanda tangan atau kata sandi, tetapi masih wajar untuk checksum atau ID cache.",
         "Ljava/security/MessageDigest;", setOf("getInstance"), { it.uppercase() in setOf("MD5", "SHA-1", "SHA1") }),
+    BehaviorRule("weak-random-crypto", CRYPTO, "Random biasa dipakai di kode kriptografi", NoteLevel.PERHATIAN,
+        "java.util.Random dapat ditebak; bila dipakai membuat kunci, IV, atau token di method yang sama dengan javax.crypto, hasil enkripsinya bisa dibongkar. Gunakan SecureRandom.",
+        "Ljava/util/Random;", setOf("<init>", "nextBytes", "nextInt", "nextLong"), alsoCalls = "Ljavax/crypto/"),
     BehaviorRule("keystore", CRYPTO, "Kunci disimpan di Android Keystore", NoteLevel.BAIK,
         "KeyGenParameterSpec membuat kunci di Android Keystore (bisa didukung hardware), sehingga kunci tidak pernah keluar dari perangkat dalam bentuk mentah.",
         "Landroid/security/keystore/KeyGenParameterSpec\$Builder;", setOf("<init>")),
@@ -118,6 +131,14 @@ private val RULES = listOf(
     BehaviorRule("screen-capture", SENSORS, "Merekam layar", NoteLevel.INFO, "MediaProjection menangkap isi layar setelah pengguna menyetujui dialog sistem.",
         "Landroid/media/projection/MediaProjectionManager;", setOf("createScreenCaptureIntent", "getMediaProjection")),
 
+    BehaviorRule("pending-mutable", PRIVATE_DATA, "PendingIntent yang dapat diubah", NoteLevel.INFO,
+        "FLAG_MUTABLE membuat aplikasi penerima PendingIntent dapat mengisi bagian Intent yang kosong. Bila Intent dasarnya implisit, aplikasi lain bisa membelokkannya; FLAG_IMMUTABLE lebih aman bila tidak perlu diubah.",
+        "Landroid/app/PendingIntent;", setOf("getActivity", "getActivities", "getBroadcast", "getService", "getForegroundService"),
+        // Only a pure PendingIntent flag word counts: MUTABLE set, IMMUTABLE clear, nothing in the low 24 bits (so -1 or a colour is not a flag).
+        ints = { list -> list.any { it in 0..0xffffffffL && it and 0x02000000L != 0L && it and 0x04000000L == 0L && it and 0xffffffL == 0L } }),
+    BehaviorRule("shared-storage", PRIVATE_DATA, "Memakai penyimpanan bersama", NoteLevel.INFO,
+        "File di penyimpanan eksternal/bersama dapat dibaca aplikasi lain yang punya izin penyimpanan; data pribadi sebaiknya di penyimpanan internal aplikasi.",
+        "Landroid/os/Environment;", setOf("getExternalStorageDirectory", "getExternalStoragePublicDirectory")),
     BehaviorRule("clipboard", PRIVATE_DATA, "Membaca clipboard", NoteLevel.INFO,
         "Clipboard bisa berisi kata sandi atau kode OTP. Sejak Android 12 sistem menampilkan notifikasi saat aplikasi membacanya.",
         "Landroid/content/ClipboardManager;", setOf("getPrimaryClip", "getText")),
@@ -144,6 +165,8 @@ private val RULES = listOf(
         "Landroidx/biometric/BiometricPrompt;", setOf("authenticate")),
     BehaviorRule("biometric", PROTECTION, "Autentikasi biometrik", NoteLevel.INFO, "", "Landroid/hardware/biometrics/BiometricPrompt;", setOf("authenticate")),
 )
+
+private val ALSO_CALLED = RULES.mapNotNull { it.alsoCalls }.toSet()
 
 /** Patterns found by looking at whole methods rather than calls; reported through [BehaviorCollector.pattern]. */
 object BehaviorPatterns {
@@ -174,15 +197,18 @@ class BehaviorCollector(private val appPackage: String? = null, private val maxU
         private set
 
     /** True when a call to [owner] could match a rule, so the scanner only keeps calls worth reporting. */
-    fun watches(owner: String): Boolean = owner in byOwner
+    fun watches(owner: String): Boolean = owner in byOwner || ALSO_CALLED.any { owner.startsWith(it) }
 
-    fun method(methodId: String, calls: List<Pair<String, String>>, strings: List<String>, instructions: Int) {
+    /** [ints] are the integer constants the method loads; [calls] may include types only watched for [BehaviorRule.alsoCalls]. */
+    fun method(methodId: String, calls: List<Pair<String, String>>, strings: List<String>, instructions: Int, ints: List<Long> = emptyList()) {
         scannedInstructions += instructions
         for ((owner, name) in calls) {
             for (rule in byOwner[owner].orEmpty()) {
                 if (rule.method != null && name !in rule.method) continue
                 if (rule.string != null && strings.none(rule.string)) continue
                 if (rule.strings != null && !rule.strings.invoke(strings)) continue
+                if (rule.ints != null && !rule.ints.invoke(ints)) continue
+                if (rule.alsoCalls != null && calls.none { it.first.startsWith(rule.alsoCalls) }) continue
                 add(rule.id, rule.category, rule.title, rule.level, rule.lesson, "${rule.ownerName}.$name", methodId)
             }
         }

@@ -37,6 +37,27 @@ class BehaviorCollectorTest {
         assertEquals(listOf(id("Lcom/example/Main;"), id("Llib/A;")), f.usedBy)
     }
 
+    @Test fun constantsAndCompanionCallsNarrowSomeRules() {
+        val c = BehaviorCollector("com.example")
+        val pi = listOf("Landroid/app/PendingIntent;" to "getActivity")
+        c.method(id("Lcom/example/Mutable;"), pi, emptyList(), 4, ints = listOf(0L, 0x0A000000L))
+        c.method(id("Lcom/example/Immutable;"), pi, emptyList(), 4, ints = listOf(0L, 0x04000000L))
+        c.method(id("Lcom/example/Minus;"), pi, emptyList(), 4, ints = listOf(0xffffffffL))
+        val debug = listOf("Landroid/webkit/WebView;" to "setWebContentsDebuggingEnabled")
+        c.method(id("Lcom/example/DebugOn;"), debug, emptyList(), 2, ints = listOf(1L))
+        c.method(id("Lcom/example/DebugOff;"), debug, emptyList(), 2, ints = listOf(0L))
+        // Random is only a finding next to javax.crypto; watches() must still let the scanner see the crypto call.
+        assertTrue(c.watches("Ljavax/crypto/spec/IvParameterSpec;"))
+        val random = "Ljava/util/Random;" to "nextBytes"
+        c.method(id("Lcom/example/Iv;"), listOf(random, "Ljavax/crypto/spec/IvParameterSpec;" to "<init>"), emptyList(), 5)
+        c.method(id("Lcom/example/Dice;"), listOf(random), emptyList(), 5)
+        val byId = c.result().findings.associateBy { it.id }
+        assertEquals(listOf(id("Lcom/example/Mutable;")), byId.getValue("pending-mutable").usedBy)
+        assertEquals(listOf(id("Lcom/example/DebugOn;")), byId.getValue("webview-debug").usedBy)
+        assertEquals(listOf(id("Lcom/example/Iv;")), byId.getValue("weak-random-crypto").usedBy)
+        assertEquals(NoteLevel.PERHATIAN, byId.getValue("weak-random-crypto").level)
+    }
+
     @Test fun riskyBehavioursBecomeDnaNotesAndBandingChanges() {
         val c = BehaviorCollector()
         c.pattern(BehaviorPatterns.TRUST_ALL, id("Lx/T;", "checkServerTrusted()V"))

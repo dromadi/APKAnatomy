@@ -78,6 +78,62 @@ class DexCodeScannerTest {
         assertEquals(full.findings, scan(CodeLimits(visitedInstructions = 3)).findings)
         assertTrue(scan(CodeLimits(classes = 1, xrefInstructions = 2)).notes.isNotEmpty())
     }
+    @Test fun readsConstantsForFlagAwareRules() = fixture({ root ->
+        File(root, "Flags.smali").writeText("""
+            .class public Lsample/Flags;
+            .super Ljava/lang/Object;
+            .method public static notify(Landroid/content/Context;Landroid/content/Intent;)V
+                .registers 4
+                const/4 v0, 0x0
+                const/high16 v1, 0x2000000
+                invoke-static {p0, v0, p1, v1}, Landroid/app/PendingIntent;->getActivity(Landroid/content/Context;ILandroid/content/Intent;I)Landroid/app/PendingIntent;
+                return-void
+            .end method
+            .method public static safe(Landroid/content/Context;Landroid/content/Intent;)V
+                .registers 4
+                const/4 v0, 0x0
+                const/high16 v1, 0x4000000
+                invoke-static {p0, v0, p1, v1}, Landroid/app/PendingIntent;->getActivity(Landroid/content/Context;ILandroid/content/Intent;I)Landroid/app/PendingIntent;
+                return-void
+            .end method
+            .method public static debug()V
+                .registers 1
+                const/4 v0, 0x1
+                invoke-static {v0}, Landroid/webkit/WebView;->setWebContentsDebuggingEnabled(Z)V
+                return-void
+            .end method
+            .method public static key()[B
+                .registers 3
+                const/16 v0, 0x10
+                new-array v0, v0, [B
+                new-instance v1, Ljava/util/Random;
+                invoke-direct {v1}, Ljava/util/Random;-><init>()V
+                invoke-virtual {v1, v0}, Ljava/util/Random;->nextBytes([B)V
+                new-instance v1, Ljavax/crypto/spec/IvParameterSpec;
+                invoke-direct {v1, v0}, Ljavax/crypto/spec/IvParameterSpec;-><init>([B)V
+                return-object v0
+            .end method
+            .method public static dice()I
+                .registers 2
+                new-instance v0, Ljava/util/Random;
+                invoke-direct {v0}, Ljava/util/Random;-><init>()V
+                const/4 v1, 0x6
+                invoke-virtual {v0, v1}, Ljava/util/Random;->nextInt(I)I
+                move-result v0
+                return v0
+            .end method
+        """.trimIndent())
+    }) { apk ->
+        fun scan(limits: CodeLimits) = BehaviorCollector("sample").also { DexCodeScanner(limits).scan(listOf(apk), "sample", behaviors = it) }.result()
+        val full = scan(CodeLimits())
+        val byId = full.findings.associateBy { it.id }
+        fun where(id: String) = byId.getValue(id).usedBy.map { it.substringAfter("classes.dex:") }
+        assertEquals(listOf("Lsample/Flags;->notify(Landroid/content/Context;Landroid/content/Intent;)V"), where("pending-mutable"))
+        assertEquals(listOf("Lsample/Flags;->debug()V"), where("webview-debug"))
+        assertEquals(listOf("Lsample/Flags;->key()[B"), where("weak-random-crypto"))
+        // The pass beyond the index reads constants the same way.
+        assertEquals(full.findings, scan(CodeLimits(classes = 1)).findings)
+    }
     private fun writeBehaviourClasses(root: File) {
         fun write(name: String, body: String) = File(root, "$name.smali").writeText(body.trimIndent())
         write("TrustAll", """
