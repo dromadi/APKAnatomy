@@ -13,6 +13,8 @@ data class NativeLibInfo(
     val jniMethods: List<String>, val hasJniOnLoad: Boolean,
     val hasSymbolTable: Boolean, val hasDebugInfo: Boolean,
     val note: String? = null,
+    /** Imported functions worth explaining (see [NATIVE_IMPORTS]), sorted. */
+    val notableImports: List<String> = emptyList(),
 ) : java.io.Serializable {
     val is64Bit: Boolean get() = bits == 64
     val elfAligned16k: Boolean? get() = minLoadAlign?.let { it >= PAGE_16K }
@@ -74,3 +76,33 @@ fun demangleJni(symbol: String): String? {
     }
     return out.toString().takeIf { '.' in it }
 }
+
+/** What an imported native function suggests: (group, explanation). Only names worth a learner's attention are listed. */
+val NATIVE_IMPORTS: Map<String, Pair<String, String>> = buildMap {
+    fun group(title: String, lesson: String, vararg names: String) = names.forEach { put(it, title to lesson) }
+    group("Anti-debug / pelacakan proses", "ptrace dipakai debugger; aplikasi memanggilnya sendiri untuk mencegah debugger lain menempel atau untuk memeriksa apakah sedang dilacak.", "ptrace")
+    group("Menjalankan program lain", "Fungsi ini menjalankan perintah atau program lain (shell, su, getprop) dari kode native.",
+        "execve", "execv", "execvp", "execl", "execlp", "system", "popen", "fork", "vfork", "posix_spawn")
+    group("Memuat library secara dinamis", "dlopen/dlsym memuat library dan mencari fungsi saat berjalan; library yang dimuat tidak terlihat di daftar NEEDED.",
+        "dlopen", "android_dlopen_ext", "dlsym")
+    group("Mengubah izin memori", "mprotect/mmap dengan izin eksekusi bisa dipakai JIT, tetapi juga oleh packer untuk membuka kode terenkripsi di memori.", "mprotect")
+    group("Membaca properti sistem", "Properti seperti ro.build.tags atau ro.product.model dipakai untuk mengenali perangkat, emulator, atau build yang di-root.",
+        "__system_property_get", "__system_property_find", "__system_property_read_callback")
+    group("Jaringan dari kode native", "Socket dibuka langsung dari native, di luar API jaringan Java dan Network Security Config.", "socket", "connect", "getaddrinfo", "gethostbyname")
+    group("Membaca antarmuka jaringan", "getifaddrs memberi alamat IP dan nama antarmuka (mis. untuk mendeteksi VPN).", "getifaddrs")
+    group("TLS sendiri (OpenSSL/BoringSSL)", "Library membawa TLS sendiri; pemeriksaan sertifikatnya tidak mengikuti Network Security Config aplikasi.",
+        "SSL_CTX_new", "SSL_connect", "SSL_new", "SSL_CTX_set_verify")
+    group("Memantau file", "inotify memberi tahu saat file berubah atau dibuka; dipakai sinkronisasi, tetapi juga deteksi tamper/debugger.", "inotify_init", "inotify_init1", "inotify_add_watch")
+    group("Syscall langsung", "syscall memanggil kernel tanpa lewat libc, sering untuk menghindari hook pada fungsi libc.", "syscall")
+}
+
+fun notableImports(imports: Collection<String>): List<String> = imports.filter { it in NATIVE_IMPORTS }.distinct().sorted()
+
+/** A group of notable imports across all native libraries, with the libraries that use it. */
+data class NativeImportFinding(val title: String, val lesson: String, val symbols: List<String>, val libraries: List<String>)
+
+fun NativeReport.importFindings(): List<NativeImportFinding> = libraries
+    .flatMap { lib -> lib.notableImports.map { symbol -> Triple(NATIVE_IMPORTS.getValue(symbol), symbol, lib.path.substringAfterLast('/')) } }
+    .groupBy { it.first }
+    .map { (group, hits) -> NativeImportFinding(group.first, group.second, hits.map { it.second }.distinct().sorted(), hits.map { it.third }.distinct().sorted()) }
+    .sortedBy { it.title }

@@ -69,7 +69,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
             "Komponen" -> ComponentsScreen(report, openClass)
             "Izin" -> PermissionsScreen(report)
             "Kemampuan" -> CapabilitiesScreen(report.capabilities)
-            "Perilaku" -> BehaviorScreen(report.behaviors, report.code.methods.mapTo(HashSet()) { it.id }, openMethod)
+            "Perilaku" -> BehaviorScreen(report.behaviors, report.code.methods.mapTo(HashSet()) { it.id }, openMethod, remember(report.native) { report.native.importFindings() })
             "Isi APK" -> ArchiveBrowser(report.structure, loadPreview)
             "Kode" -> CodeExplorer(report.code, pendingMethod, pendingClass, remember(report.components) { report.components.entryTypes() }) { pendingMethod = null; pendingClass = null }
             "Manifest" -> ManifestScreen(report)
@@ -216,6 +216,7 @@ private fun TechnologyScreen(report: AnatomyReport) {
                 if (lib.needed.isNotEmpty()) append("\nBergantung pada: ").append(lib.needed.joinToString())
                 if (lib.hasJniOnLoad) append("\nPunya JNI_OnLoad: dapat mendaftarkan metode native sendiri saat dimuat.")
                 if (lib.jniMethods.isNotEmpty()) append("\nMetode JNI: ").append(lib.jniMethods.take(12).joinToString()).append(if (lib.jniMethods.size > 12) " … (+${lib.jniMethods.size - 12})" else "")
+                if (lib.notableImports.isNotEmpty()) append("\nImpor penting: ").append(lib.notableImports.joinToString { "$it (${NATIVE_IMPORTS[it]?.first?.lowercase()})" })
                 if (lib.hasDebugInfo) append("\nMembawa info debug (.debug_*): ukuran lebih besar dan lebih mudah dianalisis.")
                 else if (lib.hasSymbolTable) append("\nTidak di-strip: tabel simbol lengkap (.symtab) ikut terbawa.")
                 lib.note?.let { append("\n").append(it) }
@@ -576,20 +577,27 @@ private fun TracesScreen(traces: TraceReport, indexed: Set<String>, openMethod: 
 }
 
 @Composable
-private fun BehaviorScreen(behaviors: BehaviorReport, indexed: Set<String>, openMethod: (String) -> Unit) {
+private fun BehaviorScreen(behaviors: BehaviorReport, indexed: Set<String>, openMethod: (String) -> Unit, native: List<NativeImportFinding> = emptyList()) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item {
             LessonCard("Pelajari perilaku", "Izin hanya menyatakan apa yang boleh; kode menunjukkan apa yang dipanggil. Setiap instruksi DEX yang terbaca " +
                 "(${behaviors.scannedInstructions} instruksi) diperiksa untuk pemanggilan API sensitif dan pola berisiko. Ini bukti bahwa kode ada, " +
                 "bukan bahwa kode dijalankan: banyak temuan berasal dari library yang fiturnya tidak dipakai. Kode yang dimuat saat berjalan tidak terlihat.")
         }
-        if (behaviors.findings.isEmpty()) item { Text("Tidak ada pemanggilan API sensitif yang dikenali.", style = MaterialTheme.typography.bodyMedium) }
+        if (behaviors.findings.isEmpty()) item { Text("Tidak ada pemanggilan API sensitif yang dikenali di kode DEX.", style = MaterialTheme.typography.bodyMedium) }
         behaviors.findings.groupBy { it.category }.forEach { (category, findings) ->
             item(key = "cat:$category") { Text(category, style = MaterialTheme.typography.titleMedium) }
             items(findings, key = { "b:${it.id}" }) { finding ->
                 NoteCard(SecurityNote(finding.level, finding.title, finding.lesson + "\n\nAPI: " + finding.apis.joinToString() +
                     "\n${finding.count} tempat" + if (finding.inAppPackage > 0) ", ${finding.inAppPackage} di package aplikasi sendiri." else ", semuanya di luar package aplikasi (library)."))
                 UsedBy(finding.usedBy, indexed, openMethod, label = "Contoh lokasi:")
+            }
+        }
+        if (native.isNotEmpty()) {
+            item(key = "native-title") { Text("Dari library native", style = MaterialTheme.typography.titleMedium) }
+            item(key = "native-lesson") { Text("Fungsi yang diimpor file .so dari libc/libdl. Ini menunjukkan kemampuan kode native, yang tidak terlihat di DEX.", style = MaterialTheme.typography.bodySmall) }
+            items(native, key = { "native:${it.title}" }) { f ->
+                NoteCard(SecurityNote(NoteLevel.INFO, f.title, f.lesson + "\n\nFungsi: " + f.symbols.joinToString() + "\nLibrary: " + f.libraries.joinToString()))
             }
         }
         items(behaviors.notes) { LessonCard("Hasil sebagian", it) }

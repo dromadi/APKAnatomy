@@ -2,7 +2,9 @@ package com.apkanatomy.data
 
 import com.apkanatomy.domain.NativeLibInfo
 import com.apkanatomy.domain.NativeReport
+import com.apkanatomy.domain.TraceCollector
 import com.apkanatomy.domain.demangleJni
+import com.apkanatomy.domain.notableImports
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.RandomAccessFile
@@ -53,7 +55,8 @@ internal object ZipLayout {
 
 /** Inspects every native library (lib/<abi>/<name>.so) in the given archives (64 MiB per library, 512 MiB in total). */
 internal class NativeScanner(private val maxLibBytes: Long = 64L * 1024 * 1024, private val maxTotalBytes: Long = 512L * 1024 * 1024) {
-    fun scan(archives: Map<String, File>, extractNativeLibs: Boolean?, checkCancelled: () -> Unit = {}): NativeReport {
+    /** @param traces receives the printable strings of each library, for endpoints and key candidates. */
+    fun scan(archives: Map<String, File>, extractNativeLibs: Boolean?, traces: TraceCollector? = null, checkCancelled: () -> Unit = {}): NativeReport {
         val libs = mutableListOf<NativeLibInfo>(); val warnings = mutableListOf<String>()
         var total = 0L
         for ((label, file) in archives) {
@@ -69,12 +72,13 @@ internal class NativeScanner(private val maxLibBytes: Long = 64L * 1024 * 1024, 
                             elf?.machine, elf?.bits, elf?.loadAligns?.minOrNull(), placement?.stored ?: (entry.method == ZipEntryMethodStored),
                             placement?.dataOffset, elf?.soname, elf?.needed.orEmpty(),
                             elf?.exports.orEmpty().mapNotNull(::demangleJni).sorted(), elf?.exports?.contains("JNI_OnLoad") == true,
-                            elf?.hasSymbolTable == true, elf?.hasDebugInfo == true, note)
+                            elf?.hasSymbolTable == true, elf?.hasDebugInfo == true, note, notableImports(elf?.imports.orEmpty()))
                         if (entry.size !in 1..maxLibBytes || total + entry.size > maxTotalBytes) { libs += info("Terlalu besar untuk dibaca (batas ${maxLibBytes / (1024 * 1024)} MiB per library)."); continue }
                         val bytes = try {
                             ByteArrayOutputStream().also { out -> zip.getInputStream(entry).use { copyBounded(it, out, maxLibBytes) } }.toByteArray()
                         } catch (_: IllegalArgumentException) { libs += info("Ukuran sebenarnya melebihi batas."); continue }
                         total += bytes.size
+                        if (traces != null) nativeStrings(bytes) { traces.scan(it, "$label/${entry.name}") }
                         libs += try { info(null, ElfReader.parse(bytes)) } catch (e: ElfReader.ElfException) { info(e.message) }
                     }
                 }
@@ -84,4 +88,19 @@ internal class NativeScanner(private val maxLibBytes: Long = 64L * 1024 * 1024, 
     }
 
     private companion object { const val ZipEntryMethodStored = java.util.zip.ZipEntry.STORED }
+}
+
+/** Runs of at least [minLength] printable ASCII characters, like the `strings` tool; at most [maxStrings]. */
+internal fun nativeStrings(bytes: ByteArray, minLength: Int = 8, maxStrings: Int = 50_000, consume: (String) -> Unit) {
+    var start = -1
+    var found = 0
+    for (i in 0..bytes.size) {
+        val printable = i < bytes.size && bytes[i] in 0x20..0x7e
+        if (printable) { if (start < 0) start = i; continue }
+        if (start >= 0 && i - start >= minLength) {
+            consume(String(bytes, start, minOf(i - start, 2_000), Charsets.US_ASCII))
+            if (++found >= maxStrings) return
+        }
+        start = -1
+    }
 }

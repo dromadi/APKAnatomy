@@ -18,7 +18,8 @@ fun AnatomyReport.searchAll(query: String, perSection: Int = 30): List<Pair<Stri
             p.dataAccess.asSequence().filter { it.category.has() || it.permissions.any { x -> x.has() } }.map { SearchHit("Privasi", it.category, it.permissions.joinToString()) }
     }
     sections["Perilaku"] = behaviors.findings.asSequence().filter { it.title.has() || it.category.has() || it.apis.any { a -> a.has() } || it.lesson.has() }
-        .map { SearchHit("Perilaku", it.title, "${it.category} · ${it.apis.joinToString()}", methodId = it.usedBy.firstOrNull()) }
+        .map { SearchHit("Perilaku", it.title, "${it.category} · ${it.apis.joinToString()}", methodId = it.usedBy.firstOrNull()) } +
+        native.importFindings().asSequence().filter { f -> f.title.has() || f.symbols.any { it.has() } }.map { SearchHit("Perilaku", it.title, "native · ${it.symbols.joinToString()}") }
     sections["Teknologi"] = structure.technologies.asSequence().filter { it.name.has() || it.explanation.has() }.map { SearchHit("Teknologi", it.name, it.explanation) } +
         sdks.asSequence().filter { it.name.has() || it.category.has() || it.evidence.any { e -> e.has() } }.map { SearchHit("Teknologi", it.name, "${it.category} · ${it.evidence.joinToString()}") } +
         protections().asSequence().filter { p -> p.name.has() || p.kind.has() || p.evidence.any { it.has() } }.map { SearchHit("Teknologi", it.name, it.kind) } +

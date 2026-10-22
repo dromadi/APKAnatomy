@@ -11,7 +11,9 @@ import java.nio.ByteOrder
 internal object ElfReader {
     class ElfException(message: String) : Exception(message)
     class Elf(val bits: Int, val machine: String, val loadAligns: List<Long>, val soname: String?, val needed: List<String>,
-        val exports: List<String>, val hasSymbolTable: Boolean, val hasDebugInfo: Boolean)
+        val exports: List<String>, val hasSymbolTable: Boolean, val hasDebugInfo: Boolean,
+        /** Undefined dynamic symbols: functions the library calls in other libraries (libc, libdl, …). */
+        val imports: List<String> = emptyList())
 
     private val MACHINES = mapOf(3 to "x86", 40 to "ARM", 62 to "x86-64", 183 to "AArch64", 243 to "RISC-V")
     private const val PT_LOAD = 1
@@ -66,7 +68,7 @@ internal object ElfReader {
         }
 
         // Section headers are optional at runtime; when present they give .dynsym, .symtab and debug sections.
-        var hasSymtab = false; var hasDebug = false; val exports = mutableListOf<String>()
+        var hasSymtab = false; var hasDebug = false; val exports = mutableListOf<String>(); val imports = mutableListOf<String>()
         if (shoff != 0 && shnum in 1..65_535) {
             class Section(val nameOffset: Int, val type: Long, val offset: Long, val size: Long, val link: Int)
             val sections = (0 until shnum).map { i ->
@@ -85,12 +87,13 @@ internal object ElfReader {
                     val info = bytes[at + if (is64) 4 else 12].toInt() and 0xff
                     val shndx = u16(at + if (is64) 6 else 14)
                     val binding = info ushr 4
-                    if (shndx == 0 || (binding != 1 && binding != 2)) continue
+                    if (binding != 1 && binding != 2) continue
                     val name = cString(strtab + b.getInt(at))
+                    if (shndx == 0) { if (name.isNotEmpty() && imports.size < 20_000) imports += name; continue }
                     if (name.startsWith("Java_") || name == "JNI_OnLoad") exports += name
                 }
             }
         }
-        return Elf(bits, machine, segments.filter { it.type == PT_LOAD.toLong() }.map { it.align }, soname, needed, exports, hasSymtab, hasDebug)
+        return Elf(bits, machine, segments.filter { it.type == PT_LOAD.toLong() }.map { it.align }, soname, needed, exports, hasSymtab, hasDebug, imports)
     }
 }

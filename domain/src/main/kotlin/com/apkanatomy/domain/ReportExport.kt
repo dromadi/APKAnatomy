@@ -78,6 +78,7 @@ fun AnatomyReport.toMarkdown(now: Long): String = buildString {
     }
     appendLine()
     appendLine("## Library native")
+    native.importFindings().forEach { appendLine("- Impor native · ${md(it.title)}: ${md(it.symbols.joinToString())} (${md(it.libraries.joinToString())})") }
     native.pageSizeNote()?.let { appendLine("**${it.level.name}** ${md(it.title)}: ${md(it.explanation)}") }
     native.libraries.forEach { lib ->
         appendLine("- `${lib.abi}/${lib.path.substringAfterLast('/')}` ${lib.machine ?: "?"} ${lib.bits ?: "?"}-bit · align ${lib.minLoadAlign ?: "?"}" +

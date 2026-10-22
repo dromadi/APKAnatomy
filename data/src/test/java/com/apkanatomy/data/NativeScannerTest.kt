@@ -3,6 +3,7 @@ package com.apkanatomy.data
 import com.apkanatomy.domain.NoteLevel
 import com.apkanatomy.domain.pageSizeNote
 import com.apkanatomy.domain.pageSizeProblems
+import com.apkanatomy.domain.importFindings
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -18,6 +19,27 @@ class NativeScannerTest {
     // AGP drops *.so from unit-test resources, so the libraries are stored as *.so.bin.
     private fun bytes(name: String) = javaClass.classLoader!!.getResourceAsStream("elf/" + if (name.endsWith(".so")) "$name.bin" else name)!!.readBytes()
     private fun file(name: String) = temp.newFile(name).apply { writeBytes(bytes(name)) }
+
+    /** imports.c (in resources/elf) calls functions it does not define; readelf --dyn-syms lists them as UND. */
+    @Test fun readsImportsAndFeedsStringsToTraces() {
+        assertEquals(listOf("printf", "__system_property_get", "SSL_CTX_new", "ptrace", "dlopen", "execve"), ElfReader.parse(bytes("imports-arm64.so")).imports)
+        // The JNI demo only imports from libdep.
+        assertEquals(listOf("dep_value"), ElfReader.parse(bytes("arm64-4k.so")).imports)
+        val traces = com.apkanatomy.domain.TraceCollector()
+        val report = NativeScanner().scan(mapOf("base.apk" to file("imports.apk")), extractNativeLibs = false, traces = traces)
+        val lib = report.libraries.single()
+        assertEquals(listOf("SSL_CTX_new", "__system_property_get", "dlopen", "execve", "ptrace"), lib.notableImports)
+        assertEquals(setOf("Anti-debug / pelacakan proses", "Memuat library secara dinamis", "Menjalankan program lain", "Membaca properti sistem", "TLS sendiri (OpenSSL/BoringSSL)"),
+            report.importFindings().map { it.title }.toSet())
+        val host = traces.result().hosts.single()
+        assertEquals("native.contoh.id" to listOf("base.apk/lib/arm64-v8a/libimports.so"), host.host to host.locations)
+    }
+
+    @Test fun extractsPrintableRuns() {
+        val found = mutableListOf<String>()
+        nativeStrings("\u0000\u0001short\u0000long enough text\u0000\u00ffend-of-file-run".toByteArray(Charsets.ISO_8859_1)) { found += it }
+        assertEquals(listOf("long enough text", "end-of-file-run"), found)
+    }
 
     @Test fun readsAlignmentDependenciesAndJniExports() {
         val elf = ElfReader.parse(bytes("arm64-4k.so"))

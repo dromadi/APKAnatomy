@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.31
+# APKAnatomy 0.1.0-alpha.32
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -332,3 +332,12 @@ When an app or APK has been analysed before, the new report is compared with the
 - A baseline the user picked with "Jadikan pembanding" (from a report or the history) is never replaced. An automatic one is dropped when the next app has no history.
 
 `AutoCompareTest` drives the real ViewModel under Robolectric: two analyses of the same fixture, then a user-chosen baseline that a third analysis keeps.
+
+## Alpha.32: native imports and strings
+
+Native libraries now show what they call and what text they carry:
+
+- **Imports.** `ElfReader` collects undefined global/weak symbols from `.dynsym`, i.e. functions taken from libc, libdl and others. Ten groups worth explaining are marked: ptrace (anti-debug), exec*/fork/system/popen (running programs), dlopen/dlsym (dynamic loading), mprotect, system properties, native sockets, getifaddrs, a bundled OpenSSL/BoringSSL, inotify and raw syscalls. They appear per library in Teknologi, grouped under "Dari library native" in Perilaku, in exports and in search.
+- **Strings.** Printable runs of 8+ characters in each library (like `strings`, at most 50,000 per library) go through the Jejak scanner, so hosts and key candidates inside `.so` files are found with their library as location.
+
+New fixture `elf/imports.c` → `imports-arm64.so.bin` (clang + lld, `-nostdlib`, never run) and `imports.apk`. Its UND symbols match `readelf --dyn-syms`. On the real `libLLVM_android.so` from build-tools, the notable imports (dlopen, dlsym, execv, execve, fork, mprotect, posix_spawn) are exactly what readelf lists among its 247 imports. On F-Droid, androidx's path library reads system properties and contains an android.googlesource.com URL.
