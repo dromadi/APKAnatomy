@@ -111,6 +111,20 @@ class RichReportScreenTest {
         compose.onNodeWithText("Lid/contoh/toko/checkout/PaymentActivity;->onCreate(Landroid/os/Bundle;)V").assertExists()
     }
 
+    @Test fun componentMapShowsWhoStartsWhom() {
+        show()
+        compose.openTab("Komponen")
+        compose.onNodeWithText("Peta komponen").assertExists()
+        compose.onNodeWithText("Sertakan tautan antar-library (1 disembunyikan)").assertExists()
+        compose.onNodeWithText("BootReceiver → PushService").assertExists()
+        compose.onNodeWithText("MainActivity → PaymentActivity").assertExists()
+        compose.shot("rich_component_map")
+        // Only links whose method is in the code index open it.
+        compose.onNodeWithText("PaymentActivity → MainActivity · onCreate()").performScrollTo().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Lid/contoh/toko/checkout/PaymentActivity;->onCreate(Landroid/os/Bundle;)V").assertExists()
+    }
+
     @Test fun methodShowsItsControlFlowDiagram() {
         fun ins(offset: Int, text: String, kind: FlowKind = FlowKind.NEXT, vararg targets: Int, keys: List<Int> = emptyList()) =
             FlowInstruction(offset, 1, "0x${offset.toString(16)}  $text", kind, targets.toList(), keys)
@@ -214,6 +228,7 @@ class RichReportScreenTest {
             }
         }
         compose.openTab("Komponen")
+        compose.scrollToText("Coba https://shop.example.com/produk")
         compose.onNodeWithText("Coba https://shop.example.com/produk").performScrollTo().performClick()
         org.junit.Assert.assertEquals(android.content.Intent.ACTION_VIEW, started.single().action)
         org.junit.Assert.assertEquals("https://shop.example.com/produk" to "id.contoh.toko", started.single().dataString to started.single().`package`)

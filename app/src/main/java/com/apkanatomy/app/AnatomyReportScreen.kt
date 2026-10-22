@@ -69,7 +69,7 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
             "Cari" -> SearchScreen(report, { name -> selectedTab = tabs.indexOf(name).coerceAtLeast(0) }, openMethod, openClass)
             "Privasi" -> PrivacyScreen(report)
             "Teknologi" -> TechnologyScreen(report)
-            "Komponen" -> ComponentsScreen(report, openClass)
+            "Komponen" -> ComponentsScreen(report, openClass, openMethod)
             "Izin" -> PermissionsScreen(report, report.code.methods.mapTo(HashSet()) { it.id }, openMethod)
             "Kemampuan" -> CapabilitiesScreen(report.capabilities)
             "Perilaku" -> BehaviorScreen(report.behaviors, report.code.methods.mapTo(HashSet()) { it.id }, openMethod, remember(report.native) { report.native.importFindings() })
@@ -311,7 +311,7 @@ private fun TechnologyScreen(report: AnatomyReport) {
 }
 
 @Composable
-private fun ComponentsScreen(report: AnatomyReport, openClass: (String) -> Unit) {
+private fun ComponentsScreen(report: AnatomyReport, openClass: (String) -> Unit, openMethod: (String) -> Unit = {}) {
     var query by rememberSaveable { mutableStateOf("") }
     var exportedOnly by rememberSaveable { mutableStateOf(false) }
     var kind by rememberSaveable { mutableIntStateOf(-1) }
@@ -330,6 +330,9 @@ private fun ComponentsScreen(report: AnatomyReport, openClass: (String) -> Unit)
     }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
         item { LessonCard("Pelajari komponen", if (kind >= 0) componentLesson(ComponentKind.entries[kind]) else "Activity: titik masuk layar. Service: kerja tanpa layar. Receiver: penerima broadcast. Provider: akses data melalui content URI.") }
+        if (kind == -1 && query.isEmpty() && !exportedOnly) item(key = "map") {
+            ComponentMapCard(report, openMethod, remember(report.code) { report.code.methods.mapTo(HashSet()) { it.id } })
+        }
         item { Text("${components.size} komponen. Exported membuka deklarasi akses dari aplikasi lain; izin tetap bisa membatasinya. Intent-filter menjelaskan pemicunya. Ketuk “Buka kode” untuk melihat method komponen, misalnya onCreate atau onReceive.", style = MaterialTheme.typography.bodySmall) }
         if (components.isEmpty()) item { Text("Tidak ada komponen yang cocok.", style = MaterialTheme.typography.bodyMedium) }
         items(components, key = { "${it.kind}:${it.name}" }) { component ->

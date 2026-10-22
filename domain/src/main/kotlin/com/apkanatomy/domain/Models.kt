@@ -51,6 +51,8 @@ data class AnatomyReport(
     val installer: String? = null,
     /** For an APK file: the installed copy of the same package, when there is one. */
     val installedCopy: InstalledCopy? = null,
+    /** Components started from code, found by [ScreenCollector]. */
+    val screenLinks: List<ScreenLink> = emptyList(),
 ) : java.io.Serializable
 data class ResourceSummary(val count: Int, val typeCounts: Map<String, Int>, val locales: List<String>, val note: String? = null) : java.io.Serializable
 /**

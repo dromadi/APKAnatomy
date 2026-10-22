@@ -106,6 +106,13 @@ internal fun richReport(): AnatomyReport {
             method("base.apk:classes2.dex:Lcom/vendor/Loader;->load()V", listOf("Ldalvik/system/DexClassLoader;" to "<init>"), emptyList(), 40)
             method("base.apk:classes2.dex:Lcom/vendor/Keys;->make()V", listOf("Landroid/security/keystore/KeyGenParameterSpec\$Builder;" to "<init>"), emptyList(), 8)
         }.result(),
+        screenLinks = listOf(
+            ScreenLink("Lid/contoh/toko/MainActivity\$1;", "Lid/contoh/toko/checkout/PaymentActivity;", "base.apk:classes.dex:Lid/contoh/toko/MainActivity\$1;->onClick(Landroid/view/View;)V"),
+            ScreenLink("Lid/contoh/toko/checkout/PaymentActivity;", "Lid/contoh/toko/MainActivity;", "base.apk:classes.dex:Lid/contoh/toko/checkout/PaymentActivity;->onCreate(Landroid/os/Bundle;)V"),
+            ScreenLink("Lid/contoh/toko/push/PushService;", "Lid/contoh/toko/MainActivity;", "base.apk:classes.dex:Lid/contoh/toko/push/PushService;->notify()V"),
+            ScreenLink("Lid/contoh/toko/BootReceiver;", "Lid/contoh/toko/push/PushService;", "base.apk:classes.dex:Lid/contoh/toko/BootReceiver;->onReceive()V"),
+            ScreenLink("Lid/contoh/toko/ui/HomeScreenKt;", "Lid/contoh/toko/checkout/PaymentActivity;", "base.apk:classes.dex:Lid/contoh/toko/ui/HomeScreenKt;->Home()V"),
+            ScreenLink("Landroidx/work/impl/Scheduler;", "Landroidx/work/impl/SystemJobService;", "base.apk:classes2.dex:Landroidx/work/impl/Scheduler;->run()V")),
         traces = TraceCollector().apply {
             scan("https://api.contoh.id/v2/checkout", "base.apk/classes.dex")
             reference("https://api.contoh.id/v2/checkout", CHECKOUT)

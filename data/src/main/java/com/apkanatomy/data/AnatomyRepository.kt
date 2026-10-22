@@ -179,7 +179,8 @@ class AnatomyRepository(private val context: Context) {
         val traces = TraceCollector()
         val behaviors = BehaviorCollector(info.packageName)
         val entryClasses = listOf(info.activities, info.services, info.receivers, info.providers).flatMap { it.orEmpty().map { c -> c.name } }
-        val code = DexCodeScanner().scan(files, info.packageName, traces, behaviors, entryClasses) { context.ensureActive() }
+        val screens = ScreenCollector(entryClasses)
+        val code = DexCodeScanner().scan(files, info.packageName, traces, behaviors, entryClasses, screens) { context.ensureActive() }
         step(3)
         val signing = signingOf()
         step(4)
@@ -219,6 +220,7 @@ class AnatomyRepository(private val context: Context) {
                 } catch (_: PackageManager.NameNotFoundException) { "Tidak dikenal di perangkat ini" }
                 AppPermission(name, protection)
             }, structure, code, manifestXml = manifest.xml, manifestNote = manifest.note,
+            screenLinks = screens.result(),
             signing = signing, security = securityFlags(app, manifest), sdks = detectSdks(code.packages, structure.libraryVersions),
             iconPng = iconPng(app), networkSecurity = networkSecurity, traces = traces.result(), native = native, behaviors = behaviors.result(), versionCode = versionCodeOf(info),
             capabilities = manifest.root?.let { CapabilitiesReader.read(it, baseApk, table) } ?: Capabilities(),

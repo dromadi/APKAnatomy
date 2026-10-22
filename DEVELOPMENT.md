@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.41
+# APKAnatomy 0.1.0-alpha.42
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -438,3 +438,14 @@ A method in the Kode tab has a new **Alur** tab: its control-flow graph, read on
 - Reports opened from history have no APK, so the tab explains that the app must be analysed again.
 
 Checked on F-Droid: 300 of the app's methods read without failure. The most complex is `LocalHTTPD.serveFile`: 55 blocks, complexity 23, 2 loops, with its `NumberFormatException` and `IOException` handlers on the right blocks. A smali test assembles a method with a loop, a packed switch whose two keys share a target, and a try/catch, and checks every edge.
+
+## Alpha.42: component map
+
+The Komponen tab opens with a **Peta komponen** card showing which activity, service or receiver is started from where in the code.
+
+- While scanning (index and last pass), `ScreenCollector` records every method that loads a manifest component's class literal (`const-class`) and also builds an explicit `Intent` (`<init>`, `setClass`, `setComponent`) or `ComponentName`. That is the shape of `startActivity(Intent(this, X::class.java))`, `startService`, and notification `PendingIntent`s. A class literal without an Intent (a log tag, for example) does not count.
+- `screenMap()` (domain) folds inner and lambda classes into their outer class (`Main$onCreate$1` → `Main`) and drops self-links such as `Sync$Companion` → `Sync`. It lays the graph out in rows by breadth-first distance from the roots: launcher activities first, then classes nothing else starts. Links where neither side is in the app's namespace (the first two parts of the package name) are hidden behind "Sertakan tautan antar-library".
+- The diagram draws boxes coloured by kind (activity, service, receiver, other code), with the launcher outlined. Arrows go down, and dashed arrows go back up. The list below is complete. A link whose method is in the code index opens that method.
+- `AnatomyReport` gained `screenLinks`, so history entries saved by earlier versions can no longer be read; they are removed with the usual message.
+
+Checked on F-Droid, which is mostly Compose with few activities. Links found include `SwapService` → `SwapWorkflowActivity` (its notification), `NotificationManager` → `MainActivity`, `ExtraSettingsKt` → `PanicActivity` and `IpfsGatewaySettingsActivity` (Compose settings screens), and `AppInstallManager` → `AppInstallService`. WorkManager's internal starts are hidden as library links.

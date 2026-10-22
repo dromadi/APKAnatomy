@@ -233,6 +233,47 @@ class DexCodeScannerTest {
             assertEquals(listOf("Lcom/google/maps/"), preferredPrefixes("com.google.maps", listOf("com.other.X")))
         } finally { root.deleteRecursively() }
     }
+    @Test fun linksComponentsStartedFromCode() = fixture({ root ->
+        File(root, "Main.smali").writeText("""
+            .class public Lsample/Main;
+            .super Landroid/app/Activity;
+            .method public open()V
+                .registers 3
+                new-instance v0, Landroid/content/Intent;
+                const-class v1, Lsample/Second;
+                invoke-direct {v0, p0, v1}, Landroid/content/Intent;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+                invoke-virtual {p0, v0}, Lsample/Main;->startActivity(Landroid/content/Intent;)V
+                return-void
+            .end method
+            .method public tag()Ljava/lang/String;
+                .registers 2
+                const-class v0, Lsample/Sync;
+                invoke-virtual {v0}, Ljava/lang/Class;->getName()Ljava/lang/String;
+                move-result-object v0
+                return-object v0
+            .end method
+        """.trimIndent())
+        File(root, "Lambda.smali").writeText("""
+            .class final Lsample/Main${'$'}onCreate${'$'}1;
+            .super Ljava/lang/Object;
+            .method public run(Landroid/content/Context;)V
+                .registers 4
+                new-instance v0, Landroid/content/ComponentName;
+                const-class v1, Lsample/Sync;
+                invoke-direct {v0, p1, v1}, Landroid/content/ComponentName;-><init>(Landroid/content/Context;Ljava/lang/Class;)V
+                return-void
+            .end method
+        """.trimIndent())
+    }) { apk ->
+        fun scan(limits: CodeLimits) = com.apkanatomy.domain.ScreenCollector(listOf("sample.Main", "sample.Second", "sample.Sync"))
+            .also { DexCodeScanner(limits).scan(listOf(apk), "sample", screens = it) }.result()
+        val links = scan(CodeLimits())
+        assertEquals(setOf("Lsample/Main;" to "Lsample/Second;", "Lsample/Main${'$'}onCreate${'$'}1;" to "Lsample/Sync;"), links.map { it.from to it.to }.toSet())
+        assertEquals("base.apk:classes.dex:Lsample/Main;->open()V", links.single { it.to == "Lsample/Second;" }.methodId)
+        // Classes beyond the index are read by the last pass.
+        assertEquals(links.toSet(), scan(CodeLimits(classes = 1)).toSet())
+    }
+
     @Test fun readsTheControlFlowOfOneMethod() = fixture({ root ->
         File(root, "Flow.smali").writeText("""
             .class public Lsample/Flow;

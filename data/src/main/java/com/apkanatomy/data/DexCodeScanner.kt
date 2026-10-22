@@ -9,6 +9,7 @@ import org.jf.dexlib2.dexbacked.DexBackedDexFile
 import org.jf.dexlib2.iface.instruction.*
 import org.jf.dexlib2.iface.reference.MethodReference
 import org.jf.dexlib2.iface.reference.StringReference
+import org.jf.dexlib2.iface.reference.TypeReference
 import org.jf.dexlib2.util.ReferenceUtil
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -34,7 +35,8 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
      *   their packages' first two segments join [preferredPackage] as namespaces indexed before libraries.
      */
     fun scan(files: List<File>, preferredPackage: String? = null, traces: TraceCollector? = null,
-        behaviors: BehaviorCollector? = null, entryClasses: Collection<String> = emptyList(), checkCancelled: () -> Unit = {}): CodeIndex {
+        behaviors: BehaviorCollector? = null, entryClasses: Collection<String> = emptyList(), screens: ScreenCollector? = null,
+        checkCancelled: () -> Unit = {}): CodeIndex {
         val entryTypes = entryClasses.mapTo(HashSet()) { "L" + it.replace('.', '/') + ";" }
         val prefixes = preferredPrefixes(preferredPackage, entryClasses)
         val classes = mutableListOf<CodeClass>()
@@ -127,6 +129,8 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                         val sensitiveCalls = ArrayList<Pair<String, String>>()
                         val strs = ArrayList<String>()
                         val ints = ArrayList<Long>()
+                        val screenTargets = ArrayList<String>(0)
+                        var buildsIntent = false
                         if (implementation != null) {
                             for (instruction in implementation.instructions) {
                                 if (visited >= limits.visitedInstructions) { warnings.add("Batas pemindaian instruksi tercapai; Find usage hanya mencakup instruksi terbaca."); truncated = true; complete = false; break }
@@ -143,6 +147,10 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                                     else warnings.add("Batas ${limits.strings} string literal tercapai; pencarian string hanya sebagian.")
                                 }
                                 if (ints.size < MAX_METHOD_STRINGS) literal(instruction)?.let { ints += it }
+                                if (screens != null && instruction is ReferenceInstruction) when (val ref = instruction.reference) {
+                                    is TypeReference -> if (instruction.opcode.name == "const-class" && screens.wants(ref.type)) screenTargets += ref.type
+                                    is MethodReference -> if (screens.buildsIntent(ref.definingClass, ref.name)) buildsIntent = true
+                                }
                                 if (instruction.opcode.name.startsWith("invoke", ignoreCase = true) && instruction is ReferenceInstruction && instruction.reference is MethodReference) {
                                     val target = instruction.reference as MethodReference
                                     if (behaviors != null && behaviors.watches(target.definingClass)) sensitiveCalls.add(target.definingClass to target.name)
@@ -152,6 +160,7 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                                 offset += instruction.codeUnits
                             }
                         }
+                        screens?.method(id, cls.type, screenTargets, buildsIntent)
                         if (behaviors != null && complete) {
                             behaviors.method(id, sensitiveCalls, strs, count, ints)
                             pattern(cls, method)?.let { behaviors.pattern(it, id) }
@@ -172,7 +181,7 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
         // A DEX can only load strings from its own pool, so string links are skipped for pools without findings.
         xref@ for (current in loaded) {
             val linkStrings = traces != null && current.hasFindings
-            if (!linkStrings && behaviors == null) continue
+            if (!linkStrings && behaviors == null && screens == null) continue
             try {
                 for (cls in current.dex.classes) {
                     if (cls.type in current.indexedTypes) continue
@@ -182,6 +191,8 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                         val sensitiveCalls = ArrayList<Pair<String, String>>(0)
                         val strs = ArrayList<String>(0)
                         val ints = ArrayList<Long>(0)
+                        val screenTargets = ArrayList<String>(0)
+                        var buildsIntent = false
                         var count = 0
                         for (instruction in implementation.instructions) {
                             if (++xrefVisited > limits.xrefInstructions) {
@@ -198,9 +209,14 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                                     if (linkStrings) traces!!.reference(reference.string, id)
                                     if (behaviors != null && strs.size < MAX_METHOD_STRINGS) strs.add(reference.string)
                                 }
-                                is MethodReference -> if (behaviors != null && behaviors.watches(reference.definingClass)) sensitiveCalls.add(reference.definingClass to reference.name)
+                                is MethodReference -> {
+                                    if (behaviors != null && behaviors.watches(reference.definingClass)) sensitiveCalls.add(reference.definingClass to reference.name)
+                                    if (screens != null && screens.buildsIntent(reference.definingClass, reference.name)) buildsIntent = true
+                                }
+                                is TypeReference -> if (screens != null && instruction.opcode.name == "const-class" && screens.wants(reference.type)) screenTargets += reference.type
                             }
                         }
+                        screens?.method(id, cls.type, screenTargets, buildsIntent)
                         if (behaviors != null && id !in current.reported) {
                             behaviors.method(id, sensitiveCalls, strs, count, ints)
                             pattern(cls, method)?.let { behaviors.pattern(it, id) }
