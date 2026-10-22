@@ -56,6 +56,7 @@ fun AnatomyReport.toMarkdown(now: Long): String = buildString {
     appendLine()
     appendLine("## Organ")
     appendLine("Teknologi: ${structure.technologies.joinToString { it.name }.ifEmpty { "tidak ada penanda yang dikenali" }}")
+    uiStack().let { ui -> appendLine("Antarmuka: ${ui.primary ?: "tidak dikenali"}" + if (ui.signals.size > 1) " (juga: ${ui.signals.map { it.name }.filter { it != ui.primary }.joinToString()})" else "") }
     appendLine()
     sdks.forEach { appendLine("- ${it.category}: **${it.name}**" + (if (it.versions.isNotEmpty()) " (${it.versions.joinToString()})" else "") + " · bukti ${it.evidence.joinToString()}") }
     appendLine()

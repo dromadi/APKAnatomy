@@ -138,7 +138,7 @@ private fun Overview(report: AnatomyReport, baseline: AnatomyReport?, open: (Str
                 "${b.findings.size} perilaku dari ${b.categories.size} kelompok (${b.findings.count { it.level == NoteLevel.PERHATIAN }} perlu perhatian): " +
                     b.findings.take(4).joinToString { it.title.lowercase() } + if (b.findings.size > 4) ", …" else ".", onClick = { open("Perilaku") })
         }
-        item { LessonCard("Teknologi", s.technologies.joinToString { it.name }.ifEmpty { "Belum ada penanda framework yang dikenali. Ini tidak otomatis berarti aplikasi pure native." } +
+        item { LessonCard("Teknologi", (report.uiStack().primary?.let { "Antarmuka: $it. " } ?: "") + s.technologies.joinToString { it.name }.ifEmpty { "Belum ada penanda framework yang dikenali. Ini tidak otomatis berarti aplikasi pure native." } +
             "\n${report.sdks.size} SDK/library dikenali" + (report.sdks.takeIf { it.isNotEmpty() }?.joinToString(prefix = ": ") { it.name }?.take(160) ?: "."), onClick = { open("Teknologi") }) }
         item { LessonCard("Kerangka", "${report.components.size} komponen · ${report.permissions.size} izin yang diminta · ${report.components.openToAllApps().size} exported tanpa izin · ${report.components.sumOf { c -> c.intentFilters.count { it.isDeepLink } }} deep link · ${report.permissions.count { sensitivePermissionLesson(it.name) != null }} izin sensitif. Pelajari titik masuk layar, kerja tanpa layar, broadcast, dan akses data.", onClick = { open("Komponen") }) }
         item {
@@ -209,6 +209,11 @@ private fun TechnologyScreen(report: AnatomyReport) {
     val s = report.structure
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item { LessonCard("Petunjuk teknologi", "Pencocokan memakai nama file dan lokasi di APK. Library dapat berasal dari satu modul atau pihak ketiga; bukti ini belum memetakan seluruh arsitektur aplikasi.") }
+        val ui = report.uiStack()
+        item(key = "ui-stack") {
+            LessonCard("Cara antarmuka dibuat: " + (ui.primary ?: "tidak dikenali"), if (ui.signals.isEmpty()) "Tidak ada penanda toolkit antarmuka yang dikenali." else
+                ui.signals.joinToString("\n\n") { s -> "${s.name}: ${s.explanation}\nBukti: ${s.evidence.joinToString()}" })
+        }
         val blocks = report.codeMap()
         if (blocks.isNotEmpty()) item(key = "code-map") { CodeMapCard(blocks, report.code.definedClasses) }
         item { Text("Proteksi & pengemasan", style = MaterialTheme.typography.titleMedium) }

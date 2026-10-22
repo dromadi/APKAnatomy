@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.34
+# APKAnatomy 0.1.0-alpha.35
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -362,3 +362,12 @@ The Izin tab starts with **Izin ↔ kode**, which joins the manifest with the Pe
 - The text explains why "not seen" is not proof of non-use: libraries, native code, WebView, intents to other apps and code loaded at runtime are all invisible to the scan.
 
 The matching is domain code (`permissionUse()`, `undeclaredUse()`) with unit tests, and is part of the Markdown/HTML export.
+
+## Alpha.35: how the UI is built
+
+Teknologi and the overview now say how the screens are drawn (`uiStack()`, domain), with evidence for every toolkit found:
+
+- **Engines that draw their own UI**: Flutter (libflutter/libapp, flutter_assets), React Native (bridge libraries, Hermes, the JS bundle, `com.facebook.react`), Unity (IL2CPP vs Mono), Unreal, Cocos, Godot, .NET MAUI/Xamarin (Mono runtime, assemblies), web apps in a WebView (Cordova, Capacitor, Ionic) and Compose Multiplatform.
+- **Android toolkits**: Jetpack Compose (class count in `androidx.compose.ui`), Views with layout XML (number of `res/layout*` files), and NativeActivity.
+
+The primary toolkit is the first engine found, because an engine draws the screens even when AndroidX is bundled. Without an engine it is Compose when there are at least 200 Compose UI classes and fewer than 40 layouts, otherwise Views. Library layouts and Compose classes from dependencies are why both are listed with their counts rather than decided silently.
