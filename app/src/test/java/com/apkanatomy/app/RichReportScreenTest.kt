@@ -37,7 +37,7 @@ class RichReportScreenTest {
     @Test fun everyTabRenders() {
         show()
         compose.shot("rich_overview")
-        for ((tab, marker) in listOf("Privasi" to "Pelacak (1)", "Perilaku" to "Pelajari perilaku", "Teknologi" to "Google AdMob", "Komponen" to "PaymentActivity", "Izin" to "SYSTEM_ALERT_WINDOW", "Kemampuan" to "TrackingService",
+        for ((tab, marker) in listOf("Privasi" to "Pelacak (1)", "Perilaku" to "Pelajari perilaku", "Teknologi" to "Google AdMob", "Komponen" to "Pelajari komponen", "Izin" to "SYSTEM_ALERT_WINDOW", "Kemampuan" to "TrackingService",
             "Isi APK" to "classes.dex", "Kode" to "Mulai menelusuri", "Manifest" to "android:label", "DNA" to "Catatan audit", "Kulit" to "Kode DEX", "Jejak" to "Midtrans server key")) {
             compose.openTab(tab)
             compose.onNodeWithText(marker, substring = true, useUnmergedTree = true).assertExists()
@@ -75,6 +75,20 @@ class RichReportScreenTest {
         compose.onAllNodes(androidx.compose.ui.test.hasText("→ id.contoh.toko.net.Api.checkout()"))[0].performClick()
         compose.waitForIdle()
         compose.onNodeWithText("Instruksi").assertExists()
+    }
+
+    @Test fun componentOpensItsClassInTheCodeTab() {
+        show()
+        compose.openTab("Komponen")
+        compose.scrollToText("Buka kode PaymentActivity →")
+        compose.onNodeWithText("Buka kode PaymentActivity →").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("id.contoh.toko.checkout.PaymentActivity").assertExists()
+        compose.onNodeWithText("Lid/contoh/toko/checkout/PaymentActivity;->onCreate(Landroid/os/Bundle;)V").assertExists()
+        compose.shot("rich_component_class")
+        compose.openTab("Komponen")
+        compose.scrollToText("id.contoh.toko.MainActivity")
+        compose.onAllNodes(androidx.compose.ui.test.hasText("Class ini tidak ada", substring = true)).fetchSemanticsNodes().let { assert(it.isNotEmpty()) }
     }
 
     @Test fun codeTabSearchesStringLiterals() {

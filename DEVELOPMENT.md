@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.20
+# APKAnatomy 0.1.0-alpha.21
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -242,3 +242,7 @@ A Perilaku tab, right after Privasi, shows what the code calls rather than what 
 - Included in the overview, Markdown/JSON export and Banding (new PERHATIAN behaviours are flagged).
 
 On the F-Droid client the scan reads 1.9 M instructions (about 2 s warm for the whole DEX step). It finds, among others, `getInstalledPackages` in its own nearby-swap code, `TelephonyManager.getDeviceId` in ACRA, zxing opening the camera, and shell commands in `FileCompat`. A first version flagged `RSA/ECB/PKCS1Padding` in the bundled zipsigner as ECB, which led to the string rule above.
+
+## Alpha.21: components open their code
+
+Each card in the Komponen tab now has a "Buka kode …" button when the component's class is in the code index. It opens the class in the Kode tab, where its methods (`onCreate`, `onReceive`, `onStartCommand`, …) can be read and followed with Find usage. A component whose class is not indexed says why: the class is not in the DEX files read (another split or the framework), or the index is partial or came from the history. The code index already indexes the app's own package first, so declared components are normally covered.

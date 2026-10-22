@@ -38,6 +38,8 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
     // A method to open in the Kode tab, set when another tab links to code.
     var pendingMethod by remember(report) { mutableStateOf<String?>(null) }
     val openMethod: (String) -> Unit = { id -> pendingMethod = id; selectedTab = tabs.indexOf("Kode") }
+    var pendingClass by remember(report) { mutableStateOf<String?>(null) }
+    val openClass: (String) -> Unit = { id -> pendingClass = id; selectedTab = tabs.indexOf("Kode") }
     Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         val icon = remember(report.iconPng) {
             report.iconPng?.let { bytes -> android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
@@ -60,12 +62,12 @@ internal fun AnatomyReportScreen(report: AnatomyReport, loadPreview: suspend (Ar
             "Ringkasan" -> Overview(report) { name -> selectedTab = tabs.indexOf(name).coerceAtLeast(0) }
             "Privasi" -> PrivacyScreen(report)
             "Teknologi" -> TechnologyScreen(report)
-            "Komponen" -> ComponentsScreen(report)
+            "Komponen" -> ComponentsScreen(report, openClass)
             "Izin" -> PermissionsScreen(report)
             "Kemampuan" -> CapabilitiesScreen(report.capabilities)
             "Perilaku" -> BehaviorScreen(report.behaviors, report.code.methods.mapTo(HashSet()) { it.id }, openMethod)
             "Isi APK" -> ArchiveBrowser(report.structure, loadPreview)
-            "Kode" -> CodeExplorer(report.code, pendingMethod) { pendingMethod = null }
+            "Kode" -> CodeExplorer(report.code, pendingMethod, pendingClass) { pendingMethod = null; pendingClass = null }
             "Manifest" -> ManifestScreen(report)
             "DNA" -> DnaScreen(report)
             "Kulit" -> SkinScreen(report)
@@ -177,7 +179,7 @@ private fun TechnologyScreen(report: AnatomyReport) {
 }
 
 @Composable
-private fun ComponentsScreen(report: AnatomyReport) {
+private fun ComponentsScreen(report: AnatomyReport, openClass: (String) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     var exportedOnly by rememberSaveable { mutableStateOf(false) }
     var kind by rememberSaveable { mutableIntStateOf(-1) }
@@ -189,12 +191,14 @@ private fun ComponentsScreen(report: AnatomyReport) {
     }
     Row { Checkbox(exportedOnly, { exportedOnly = it }); Text("Hanya exported", modifier = Modifier.padding(top = 14.dp)) }
     val open = remember(report.components) { report.components.openToAllApps().toSet() }
+    // Component class name → indexed class, to open it in the Kode tab.
+    val classByName = remember(report.code) { report.code.classes.groupBy { it.displayName }.mapValues { it.value.first() } }
     val components = remember(report.components, query, exportedOnly, kind) {
         report.components.filtered(query, exportedOnly).filter { kind == -1 || it.kind.ordinal == kind }
     }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
         item { LessonCard("Pelajari komponen", if (kind >= 0) componentLesson(ComponentKind.entries[kind]) else "Activity: titik masuk layar. Service: kerja tanpa layar. Receiver: penerima broadcast. Provider: akses data melalui content URI.") }
-        item { Text("${components.size} komponen. Exported membuka deklarasi akses dari aplikasi lain; izin tetap bisa membatasinya. Intent-filter menjelaskan pemicunya; referensi kode dari komponen belum ditautkan.", style = MaterialTheme.typography.bodySmall) }
+        item { Text("${components.size} komponen. Exported membuka deklarasi akses dari aplikasi lain; izin tetap bisa membatasinya. Intent-filter menjelaskan pemicunya. Ketuk “Buka kode” untuk melihat method komponen, misalnya onCreate atau onReceive.", style = MaterialTheme.typography.bodySmall) }
         if (components.isEmpty()) item { Text("Tidak ada komponen yang cocok.", style = MaterialTheme.typography.bodyMedium) }
         items(components, key = { "${it.kind}:${it.name}" }) { component ->
             LessonCard(component.name, "${component.kind.name} · exported=${component.exported} · enabled=${component.enabled}" +
@@ -204,6 +208,10 @@ private fun ComponentsScreen(report: AnatomyReport) {
                 (component.permission?.let { "\nIzin akses/baca: $it" } ?: "") +
                 (component.writePermission?.let { "\nIzin tulis: $it" } ?: "") +
                 (component.authority?.let { "\nAuthority: $it" } ?: ""))
+            val cls = classByName[component.name]
+            if (cls != null) TextButton(onClick = { openClass(cls.id) }) { Text("Buka kode ${component.name.substringAfterLast('.')} →") }
+            else Text(if (report.code.warnings.isEmpty()) "Class ini tidak ada di DEX yang terbaca; bisa berasal dari split lain atau framework." else "Class ini tidak ada di indeks kode (indeks dibatasi atau dari riwayat).",
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp))
         }
     }
 }

@@ -15,7 +15,7 @@ import androidx.compose.ui.unit.dp
 import com.apkanatomy.domain.*
 
 @Composable
-internal fun CodeExplorer(index: CodeIndex, openMethodId: String? = null, onOpened: () -> Unit = {}) {
+internal fun CodeExplorer(index: CodeIndex, openMethodId: String? = null, openClassId: String? = null, onOpened: () -> Unit = {}) {
     var query by rememberSaveable { mutableStateOf("") }
     var selectedClassId by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedMethodId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -26,8 +26,9 @@ internal fun CodeExplorer(index: CodeIndex, openMethodId: String? = null, onOpen
     }
     // 0 = class, 1 = method, 2 = string literal
     var mode by rememberSaveable { mutableIntStateOf(0) }
-    LaunchedEffect(openMethodId) {
+    LaunchedEffect(openMethodId, openClassId) {
         if (openMethodId != null) { selectedClassId = null; selectedMethodId = openMethodId; onOpened() }
+        else if (openClassId != null) { selectedMethodId = null; methodHistory = emptyList(); selectedClassId = openClassId; onOpened() }
     }
     val methodById = remember(index) { index.methods.associateBy { it.id } }
     val methodsByDescriptor = remember(index) { index.methods.groupBy { it.descriptor } }
