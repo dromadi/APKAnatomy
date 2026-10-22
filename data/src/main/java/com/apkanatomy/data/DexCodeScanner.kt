@@ -19,6 +19,8 @@ internal data class CodeLimits(val dexBytes: Long = 16L * 1024 * 1024,
     val totalBytes: Long = 48L * 1024 * 1024, val classes: Int = 20_000,
     val methods: Int = 30_000, val visitedInstructions: Int = 500_000,
     val displayedInstructions: Int = 30_000, val calls: Int = 40_000, val strings: Int = 50_000,
+    /** Pseudo-code lines kept across all methods; the app's own code is indexed first, so it is covered first. */
+    val pseudoLines: Int = 80_000,
     /** Instructions read beyond the index, only to link strings to the methods that load them and to find behaviours. */
     val xrefInstructions: Int = 5_000_000)
 
@@ -42,6 +44,7 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
         var totalBytes = 0L
         var visited = 0
         var displayed = 0
+        var pseudoLines = 0
         // Package names are gathered from every DEX that fits the byte budget, even after the
         // class/method index is full, because SDK detection needs the whole namespace.
         val packages = sortedSetOf<String>()
@@ -149,9 +152,10 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                             pattern(cls, method)?.let { behaviors.pattern(it, id) }
                             current.reported.add(id)
                         }
+                        val pseudo = if (implementation != null && pseudoLines < limits.pseudoLines) PseudoJava.render(method).also { pseudoLines += it.size } else emptyList()
                         methods.add(CodeMethod(descriptor, cls.type, method.name, archive, current.name,
                             AccessFlags.getAccessFlagsForMethod(method.accessFlags).joinToString(" ") { it.toString() },
-                            implementation != null, lines, count, truncated))
+                            implementation != null, lines, count, truncated, pseudo))
                     }
                     if (complete) current.indexedTypes.add(cls.type)
                 }

@@ -96,6 +96,7 @@ private fun MethodDetail(index: CodeIndex, method: CodeMethod,
     graph: CallGraph, entryPoints: Map<String, String>,
     back: () -> Unit, open: (String) -> Unit) {
     var tab by rememberSaveable(method.id) { mutableIntStateOf(0) }
+    var showPseudo by rememberSaveable(method.id) { mutableStateOf(method.pseudo.isNotEmpty()) }
     TextButton(onClick = back) { Text("Kembali") }
     PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
         listOf("Instruksi", "Memanggil", "Find usage", "Jalur").forEachIndexed { i, label -> Tab(tab == i, { tab = i }, text = { Text(label) }) }
@@ -109,9 +110,21 @@ private fun MethodDetail(index: CodeIndex, method: CodeMethod,
         if (index.warnings.isNotEmpty()) item { CodeCard("Indeks sebagian", "Ada batas atau kegagalan pemindaian. Hasil Find usage tidak mencakup seluruh aplikasi; lihat peringatan pada pencarian kode.") }
         when (tab) {
             0 -> {
-                item { Text("Instruksi ditampilkan dengan offset dalam code unit DEX. Ini ringkasan disassembly, bukan Java atau Smali lengkap yang bisa dikompilasi.", style = MaterialTheme.typography.bodySmall) }
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = showPseudo, onClick = { showPseudo = true }, enabled = method.pseudo.isNotEmpty(), label = { Text("Kode semu") })
+                        FilterChip(selected = !showPseudo, onClick = { showPseudo = false }, label = { Text("Instruksi DEX") })
+                    }
+                }
+                item {
+                    Text(if (showPseudo) "Kode semu mirip Java, diterjemahkan per instruksi: register tetap bernama v0, p0 (parameter), atau this; percabangan tetap berupa goto. " +
+                        "Untuk dibaca, bukan dikompilasi; nama variabel dan tipe asli sudah hilang saat kompilasi."
+                        else "Instruksi ditampilkan dengan offset dalam code unit DEX. Ini ringkasan disassembly, bukan Java atau Smali lengkap yang bisa dikompilasi.", style = MaterialTheme.typography.bodySmall)
+                }
                 if (!method.hasCode) item { Text("Tidak ada implementasi DEX untuk method ini; bisa berupa abstract atau native.") }
-                items(method.instructions.withIndex().toList(), key = { it.index }) { line -> SelectionContainer { Text(line.value, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) } }
+                else if (method.pseudo.isEmpty()) item { Text("Kode semu tidak dibuat untuk method ini (batas tampilan tercapai); lihat instruksi DEX.", style = MaterialTheme.typography.bodySmall) }
+                val lines = if (showPseudo) method.pseudo else method.instructions
+                items(lines.withIndex().toList(), key = { "${showPseudo}:${it.index}" }) { line -> SelectionContainer { Text(line.value, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) } }
                 if (method.truncated) item { Text("Tampilan/pemindaian instruksi dibatasi. ${method.instructionCount} instruksi terbaca; daftar bukan keseluruhan method.") }
             }
             1 -> {

@@ -62,8 +62,11 @@ class RichReportScreenTest {
         compose.onNodeWithText("→ id.contoh.toko.net.Api.checkout()").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("Instruksi").assertExists()
-        compose.onNodeWithText("const-string v0", substring = true).assertExists()
+        // Pseudo-code is shown first; the DEX instructions are one tap away.
+        compose.onNodeWithText("v0 = \"https://api.contoh.id/v2/checkout\";").assertExists()
         compose.shot("rich_xref_method")
+        compose.onNodeWithText("Instruksi DEX").performClick()
+        compose.onNodeWithText("const-string v0", substring = true).assertExists()
     }
 
     @Test fun perilakuShowsRiskyCodeFirstAndLinksToIt() {

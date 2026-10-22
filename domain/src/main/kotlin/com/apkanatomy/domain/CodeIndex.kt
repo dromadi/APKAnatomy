@@ -7,7 +7,9 @@ data class CodeClass(val type: String, val superType: String?, val interfaces: L
 }
 data class CodeMethod(val descriptor: String, val owner: String, val name: String,
     val archive: String, val dex: String, val access: String, val hasCode: Boolean,
-    val instructions: List<String>, val instructionCount: Int, val truncated: Boolean) : java.io.Serializable {
+    val instructions: List<String>, val instructionCount: Int, val truncated: Boolean,
+    /** Java-like reading of the instructions; empty when not rendered (no code, or the display budget was used up). */
+    val pseudo: List<String> = emptyList()) : java.io.Serializable {
     val id: String get() = "$archive:$dex:$descriptor"
 }
 data class MethodCall(val callerId: String, val target: String, val offset: Int) : java.io.Serializable

@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.28
+# APKAnatomy 0.1.0-alpha.29
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -299,3 +299,13 @@ Everything in an APK is untrusted, and a report is likely to be opened in a brow
 - the page carries `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; img-src data:`, so even a missed escape could not run a script or load anything remote.
 
 Unit tests feed a `<script>` payload through the label and a component name. The rich sample report is written to `app/build/outputs/roborazzi/rich_report.html` on every test run, so CI uploads it with the screenshots.
+
+## Alpha.29: pseudo-code
+
+The method view in Kode opens on **Kode semu**, a Java-like reading of the instructions, with **Instruksi DEX** one tap away. `PseudoJava` (data) translates one statement per instruction:
+
+- Registers keep their names (`v0`, parameters `p0…`, `this` for instance methods; a long/double parameter takes two registers). Branch targets become `L_<offset>:` labels with `if (…) goto` and `goto`.
+- A call's result is folded into the `move-result` that follows it (`v0 = v1.toString();`), and `new-instance` is folded into its constructor (`v1 = new StringBuilder(v0);`). `filled-new-array` becomes `new String[] { v0, v1 }`.
+- Fields, arrays, casts, `instanceof`, arithmetic (including `/2addr` and `/lit` forms), conversions, comparisons, `throw`, `synchronized`, and `switch` are covered. Anything else stays as a `// opcode` comment, and an unexpected instruction shape only costs its own line.
+
+dexlib2 names opcodes as smali does (`const/4`, `add-int/2addr`), which the first version did not expect: on F-Droid nearly every line fell back to a comment. After that fix, 215 of 80,000 lines do. Pseudo-code is rendered at scan time for indexed methods, up to 80,000 lines in total (`CodeLimits.pseudoLines`). The app's own code is indexed first, so it is covered first; on F-Droid that is 7,111 methods, at about 1.5 s extra on a cold JVM. Example from F-Droid's `FileCompat.symlinkRuntime`: `p1 = Runtime.getRuntime(); p0 = p1.exec(p0);`.
