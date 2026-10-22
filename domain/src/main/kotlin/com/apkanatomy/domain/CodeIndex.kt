@@ -21,7 +21,9 @@ data class CodeIndex(val classes: List<CodeClass> = emptyList(), val methods: Li
     val packages: List<String> = emptyList(),
     /** Class definitions seen in those DEX files, and how many have a one- or two-letter simple name. */
     val definedClasses: Int = 0, val shortNamedClasses: Int = 0,
-    val strings: List<StringUse> = emptyList()) : java.io.Serializable {
+    val strings: List<StringUse> = emptyList(),
+    /** Class definitions per dotted package, over every DEX read (beyond the index limits). */
+    val packageClasses: Map<String, Int> = emptyMap()) : java.io.Serializable {
     fun callersOf(descriptor: String): List<MethodCall> = calls.filter { it.target == descriptor }
     fun callsFrom(methodId: String): List<MethodCall> = calls.filter { it.callerId == methodId }
 }

@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.32
+# APKAnatomy 0.1.0-alpha.33
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -341,3 +341,14 @@ Native libraries now show what they call and what text they carry:
 - **Strings.** Printable runs of 8+ characters in each library (like `strings`, at most 50,000 per library) go through the Jejak scanner, so hosts and key candidates inside `.so` files are found with their library as location.
 
 New fixture `elf/imports.c` → `imports-arm64.so.bin` (clang + lld, `-nostdlib`, never run) and `imports.apk`. Its UND symbols match `readelf --dyn-syms`. On the real `libLLVM_android.so` from build-tools, the notable imports (dlopen, dlsym, execv, execve, fork, mprotect, posix_spawn) are exactly what readelf lists among its 247 imports. On F-Droid, androidx's path library reads system properties and contains an android.googlesource.com URL.
+
+## Alpha.33: code map
+
+Teknologi opens with a **Peta kode**: a treemap where each box is a group of packages and its area is the number of classes in it, over every DEX file (not just the index). The scanner now counts classes per package (`CodeIndex.packageClasses`); history keeps these counts.
+
+- Grouping: reverse-domain names by organisation (`com.squareup`, `id.contoh`), big vendors by product (`com.google.firebase`, `com.google.android`), bare names by their first segment (`okhttp3`, `kotlin`).
+- R8's one- and two-letter top packages (`a`, `b`, …) are gathered into "kode tersamar", because they usually mix app and library code. The 24 largest groups are shown; the rest are merged.
+- Colours: app code (the package name's and the components' namespaces), AndroidX/Kotlin/Google platform libraries, third-party libraries (tracker SDKs always count as third party) and obfuscated code. Detected SDK names label their boxes.
+- Below the map: the app's own share of classes and the five largest groups.
+
+The layout is a squarified treemap (Bruls, Huizing & van Wijk) in domain code. A unit test checks that areas are proportional and match the paper's example; labels are drawn only where they fit.

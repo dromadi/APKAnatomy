@@ -140,6 +140,14 @@ class RichReportScreenTest {
         org.junit.Assert.assertTrue(html.contains("<h2>Perilaku</h2>"))
     }
 
+    @Test fun technologyShowsTheCodeMap() {
+        show()
+        compose.openTab("Teknologi")
+        compose.onNodeWithText("Peta kode").assertExists()
+        compose.onNodeWithText("Kode aplikasi sendiri: sekitar 8%", substring = true).assertExists()
+        compose.shot("rich_code_map")
+    }
+
     @Test fun codeTabSearchesStringLiterals() {
         show()
         compose.openTab("Kode")

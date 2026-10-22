@@ -52,7 +52,8 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
         var definedClasses = 0
         var shortNamed = 0
         var xrefVisited = 0
-        fun result() = CodeIndex(classes, methods, calls, warnings.toList(), packages.toList(), definedClasses, shortNamed, strings)
+        val packageClasses = HashMap<String, Int>()
+        fun result() = CodeIndex(classes, methods, calls, warnings.toList(), packages.toList(), definedClasses, shortNamed, strings, packageClasses)
         // 1. Load every DEX within the byte budget: packages and string pools cover all of them.
         val loaded = mutableListOf<LoadedDex>()
         for ((index, file) in files.withIndex()) {
@@ -80,7 +81,9 @@ internal class DexCodeScanner(private val limits: CodeLimits = CodeLimits()) {
                             val dex = DexBackedDexFile.fromInputStream(null, bytes.inputStream())
                             for (cls in dex.classes) {
                                 val name = cls.type.removePrefix("L").removeSuffix(";")
-                                packages.add(name.substringBeforeLast('/', "").replace('/', '.'))
+                                val pkg = name.substringBeforeLast('/', "").replace('/', '.')
+                                packages.add(pkg)
+                                packageClasses.merge(pkg, 1, Int::plus)
                                 definedClasses++
                                 if (name.substringAfterLast('/').substringBefore('$').length <= 2) shortNamed++
                             }

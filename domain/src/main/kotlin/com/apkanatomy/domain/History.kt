@@ -6,7 +6,7 @@ package com.apkanatomy.domain
  */
 fun AnatomyReport.forHistory(): AnatomyReport = copy(
     code = CodeIndex(packages = code.packages, definedClasses = code.definedClasses, shortNamedClasses = code.shortNamedClasses,
-        warnings = listOf(HISTORY_CODE_NOTE)),
+        warnings = listOf(HISTORY_CODE_NOTE), packageClasses = code.packageClasses),
 )
 
 const val HISTORY_CODE_NOTE = "Laporan dibuka dari riwayat: daftar class, method, dan string tidak disimpan. Analisis ulang aplikasi atau APK-nya untuk menjelajah kode."

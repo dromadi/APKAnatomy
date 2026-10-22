@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.text.drawText
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -162,11 +163,54 @@ private fun Overview(report: AnatomyReport, baseline: AnatomyReport?, open: (Str
     }
 }
 
+/** Treemap of class counts per package group: where the code in the APK comes from. */
+@Composable
+private fun CodeMapCard(blocks: List<CodeBlock>, total: Int) {
+    val colors = MaterialTheme.colorScheme
+    val fill = mapOf(CodeOwner.APP to colors.primary, CodeOwner.PLATFORM to colors.tertiary, CodeOwner.LIBRARY to colors.secondary, CodeOwner.OBFUSCATED to colors.outline)
+    val ink = mapOf(CodeOwner.APP to colors.onPrimary, CodeOwner.PLATFORM to colors.onTertiary, CodeOwner.LIBRARY to colors.onSecondary, CodeOwner.OBFUSCATED to colors.surface)
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val labelStyle = MaterialTheme.typography.labelSmall
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Peta kode", style = MaterialTheme.typography.titleMedium)
+            Text("Luas setiap kotak sebanding dengan jumlah class ($total class di semua DEX). Kode aplikasi sering hanya sebagian kecil; sisanya library.",
+                style = MaterialTheme.typography.bodySmall)
+            val rects = remember(blocks) { squarify(blocks.map { it.classes.toDouble() }) }
+            androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(240.dp)) {
+                val gap = 2.dp.toPx()
+                blocks.zip(rects).forEach { (block, r) ->
+                    val left = r.x * size.width; val top = r.y * size.height
+                    val w = r.w * size.width - gap; val h = r.h * size.height - gap
+                    if (w <= 0f || h <= 0f) return@forEach
+                    drawRect(fill.getValue(block.owner), androidx.compose.ui.geometry.Offset(left, top), androidx.compose.ui.geometry.Size(w, h))
+                    val text = measurer.measure(block.sdk ?: block.name, labelStyle.copy(color = ink.getValue(block.owner)),
+                        constraints = androidx.compose.ui.unit.Constraints(maxWidth = (w - 8).toInt().coerceAtLeast(0)), maxLines = 2)
+                    if (text.size.height + 6 < h && w > 40) drawText(text, topLeft = androidx.compose.ui.geometry.Offset(left + 4, top + 3))
+                }
+            }
+            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                CodeOwner.entries.filter { o -> blocks.any { it.owner == o } }.forEach { owner ->
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Box(Modifier.size(10.dp).background(fill.getValue(owner)))
+                        Text(owner.label, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+            val share = blocks.filter { it.owner == CodeOwner.APP }.sumOf { it.classes } * 100 / total.coerceAtLeast(1)
+            Text("Kode aplikasi sendiri: sekitar $share%. Terbesar: " + blocks.take(5).joinToString { "${it.sdk ?: it.name} (${it.classes})" },
+                style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
 @Composable
 private fun TechnologyScreen(report: AnatomyReport) {
     val s = report.structure
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item { LessonCard("Petunjuk teknologi", "Pencocokan memakai nama file dan lokasi di APK. Library dapat berasal dari satu modul atau pihak ketiga; bukti ini belum memetakan seluruh arsitektur aplikasi.") }
+        val blocks = report.codeMap()
+        if (blocks.isNotEmpty()) item(key = "code-map") { CodeMapCard(blocks, report.code.definedClasses) }
         item { Text("Proteksi & pengemasan", style = MaterialTheme.typography.titleMedium) }
         val protections = report.protections()
         if (protections.isEmpty()) item { Text("Tidak ada packer, kode tersembunyi, penyamaran nama, atau pemeriksaan lingkungan yang dikenali.", style = MaterialTheme.typography.bodyMedium) }
