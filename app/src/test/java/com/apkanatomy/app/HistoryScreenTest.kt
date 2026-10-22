@@ -106,6 +106,8 @@ class HistoryScreenTest {
         var opened: String? = null
         screen { AuditScreen(apps, null, busy = false, start = {}, cancel = {}, inspect = { opened = it }, savedAt = 1, diff = diff) }
         compose.onNodeWithText("Perubahan sejak", substring = true).assertExists()
+        compose.onNodeWithText("Simpan CSV").assertExists()
+        compose.onNodeWithText("Simpan HTML").assertExists()
         compose.onNodeWithText("1 baru dipasang, 1 diperbarui, 1 dihapus · 1 perlu dilihat").assertExists()
         compose.onNodeWithText("⚠ Toko Contoh · diperbarui").assertExists()
         compose.onNodeWithText("• Pelacak baru: Google AdMob").assertExists()

@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.39
+# APKAnatomy 0.1.0-alpha.40
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -419,3 +419,10 @@ When an audit finishes, it is compared with the one before (`auditChanges`, doma
 - **Diperbarui / Berubah**: version, targetSdk, permissions added or dropped, new data categories, trackers added or gone, now debuggable, a different install source.
 
 New data access, new trackers, debuggable and a changed install source are marked "perlu dilihat" and listed first. System apps are compared only when both audits included them, so ticking or unticking the checkbox does not make them appear installed or removed. Trackers are compared only when the code of both versions was readable. The card lists 8 changes with "Tampilkan semua". Tapping a change opens the full analysis, except for removed apps.
+
+## Alpha.40: export the audit
+
+The Audit tab has **Simpan CSV** and **Simpan HTML** next to "Audit ulang", saved through the system file picker as `apkanatomy-audit-<date>.csv/.html`.
+
+- **CSV** (`toAuditCsv`, domain) has one row per app, highest points first. Columns: label, package, version, system, targetSdk, points, debuggable, allowBackup, cleartext, installer, open components, data categories, trackers with purpose, permissions, reasons and note. Every cell is quoted (RFC 4180, CRLF), and the file starts with a UTF-8 BOM so Excel reads it correctly. Labels come from the apps themselves, so a cell starting with `= + - @` gets a leading `'` and a spreadsheet does not run it as a formula.
+- **HTML** (`toAuditHtml`) is self-contained and uses the report export's stylesheet (light and dark). It has the summary cards per filter, the changes since the previous audit when there is a diff, and a table of apps with their reasons. All app text is escaped, and the CSP forbids scripts and remote loads. Package names in a table's first column no longer break mid-word.

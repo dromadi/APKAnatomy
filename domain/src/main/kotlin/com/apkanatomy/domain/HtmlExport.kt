@@ -15,7 +15,7 @@ fun AnatomyReport.toHtml(now: Long): String {
         append("<!doctype html>\n<html lang=\"id\">\n<head>\n<meta charset=\"utf-8\">\n")
         append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
         append("<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline'; img-src data:\">\n")
-        append("<title>${escapeHtml("APKAnatomy: $label")}</title>\n<style>$CSS</style>\n</head>\n<body>\n<main>\n")
+        append("<title>${escapeHtml("APKAnatomy: $label")}</title>\n<style>$REPORT_CSS</style>\n</head>\n<body>\n<main>\n")
         append("<header>$icon<div><h1>${escapeHtml(label)}</h1><p class=\"muted\">${escapeHtml("$packageName · versi $version · minSdk $minSdk · targetSdk $targetSdk")}</p></div></header>\n")
         append("<section class=\"cards\">")
         cards.forEach { (name, value) -> append("<div class=\"card${if (name == "Perlu perhatian" && attention > 0) " warn" else ""}\"><b>${escapeHtml(value)}</b><span>${escapeHtml(name)}</span></div>") }
@@ -78,7 +78,7 @@ internal fun markdownToHtml(markdown: String): String = buildString {
     }
 }
 
-private const val CSS = """
+internal const val REPORT_CSS = """
 :root { --bg: #fbf8fd; --fg: #1b1b1f; --muted: #5e5e66; --card: #efedf4; --line: #d6d4dc; --accent: #5b4ba7; --warn: #f9dedc; }
 @media (prefers-color-scheme: dark) { :root { --bg: #131316; --fg: #e5e1e9; --muted: #a9a6b0; --card: #24232a; --line: #3a3940; --accent: #c7bfff; --warn: #5c1f1a; } }
 * { box-sizing: border-box; }
@@ -96,4 +96,5 @@ ul { padding-left: 1.2em; } li { margin: 4px 0; }
 .table { overflow-x: auto; } table { border-collapse: collapse; width: 100%; font-size: .92em; }
 th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
 strong { color: var(--accent); }
+td:first-child { min-width: 9em; } td:first-child code { word-break: normal; overflow-wrap: anywhere; }
 """

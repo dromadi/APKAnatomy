@@ -160,7 +160,10 @@ internal fun AuditScreen(results: List<AppAudit>?, progress: Triple<Int, Int, St
                 Text(if (total == 0) "Menyiapkan…" else "Memeriksa ${done + 1}/$total: $label", style = MaterialTheme.typography.bodyMedium)
                 LinearProgressIndicator(progress = { if (total == 0) 0f else done.toFloat() / total }, modifier = Modifier.fillMaxWidth())
                 OutlinedButton(onClick = cancel) { Text("Batal") }
-            } else Button(onClick = { start(includeSystem) }, enabled = !busy) { Text(if (results == null) "Mulai audit" else "Audit ulang") }
+            } else Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                Button(onClick = { start(includeSystem) }, enabled = !busy) { Text(if (results == null) "Mulai audit" else "Audit ulang") }
+                if (results != null) AuditExport(results, savedAt ?: System.currentTimeMillis(), diff)
+            }
         }
         if (results != null) {
             item {
@@ -192,6 +195,29 @@ internal fun AuditScreen(results: List<AppAudit>?, progress: Triple<Int, Int, St
             }
         }
     }
+}
+
+/** Saves the audit as CSV (spreadsheet) or HTML (browser) through the system file picker. */
+@Composable
+private fun AuditExport(results: List<AppAudit>, savedAt: Long, diff: AuditDiff?) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var pending by remember { mutableStateOf("") }
+    fun save(uri: Uri?) {
+        val text = pending
+        if (uri == null || text.isEmpty()) return
+        scope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                try { context.contentResolver.openOutputStream(uri)?.use { it.write(text.toByteArray()) } != null } catch (_: Exception) { false }
+            }
+            Toast.makeText(context, if (saved) "Audit disimpan." else "Audit gagal disimpan.", Toast.LENGTH_SHORT).show()
+        }
+    }
+    val saveCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv"), ::save)
+    val saveHtml = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/html"), ::save)
+    val name = "apkanatomy-audit-" + java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.ROOT).format(java.util.Date(savedAt))
+    OutlinedButton(onClick = { pending = results.toAuditCsv(); saveCsv.launch("$name.csv") }) { Text("Simpan CSV") }
+    OutlinedButton(onClick = { pending = results.toAuditHtml(savedAt, diff); saveHtml.launch("$name.html") }) { Text("Simpan HTML") }
 }
 
 /** Apps installed, removed or changed since the audit before; changes worth a look come first and are marked. */
