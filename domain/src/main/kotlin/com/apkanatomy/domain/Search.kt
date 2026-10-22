@@ -21,6 +21,7 @@ fun AnatomyReport.searchAll(query: String, perSection: Int = 30): List<Pair<Stri
         .map { SearchHit("Perilaku", it.title, "${it.category} · ${it.apis.joinToString()}", methodId = it.usedBy.firstOrNull()) }
     sections["Teknologi"] = structure.technologies.asSequence().filter { it.name.has() || it.explanation.has() }.map { SearchHit("Teknologi", it.name, it.explanation) } +
         sdks.asSequence().filter { it.name.has() || it.category.has() || it.evidence.any { e -> e.has() } }.map { SearchHit("Teknologi", it.name, "${it.category} · ${it.evidence.joinToString()}") } +
+        protections().asSequence().filter { p -> p.name.has() || p.kind.has() || p.evidence.any { it.has() } }.map { SearchHit("Teknologi", it.name, it.kind) } +
         structure.libraryVersions.asSequence().filter { (k, v) -> k.has() || v.has() }.map { (k, v) -> SearchHit("Teknologi", k, "versi $v") } +
         native.libraries.asSequence().filter { it.path.has() || it.needed.any { n -> n.has() } || it.jniMethods.any { j -> j.has() } }.map { SearchHit("Teknologi", it.path, "${it.abi} · library native") }
     sections["Komponen"] = components.asSequence().filter { c ->

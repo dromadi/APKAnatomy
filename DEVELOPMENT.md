@@ -1,4 +1,4 @@
-# APKAnatomy 0.1.0-alpha.26
+# APKAnatomy 0.1.0-alpha.27
 
 Open the project in Android Studio with JDK 17 and Android SDK platform 37 (compile SDK 37, target SDK 35). The build uses AGP 9.4 with its built-in Kotlin support (Kotlin 2.4), and the included wrapper pins Gradle 9.8.2 with a distribution checksum.
 
@@ -278,3 +278,14 @@ The "Resource & bahasa" card in Kulit opens a browser for `resources.arsc`: type
 ## Alpha.26: search the whole report
 
 A **Cari** tab, right after Ringkasan, searches every section at once: trackers and data categories, behaviours, technologies, SDKs, library versions and native libraries, components and their intent filters, permissions, capabilities, classes, methods and string literals, manifest lines, DNA notes and certificates, hosts and key candidates, and file paths. Results are grouped by section (30 per section). Tapping a class or method opens it in Kode; anything else opens its tab. `searchAll()` is a domain function with unit tests; the sections are lazy sequences, so each keystroke only scans until it has enough matches.
+
+## Alpha.27: packers and protections
+
+Teknologi starts with a **Proteksi & pengemasan** section (also in exports, search and, for packers, as DNA notes), because a packed app hides its real code from every code-based tab:
+
+- **Packers / protectors** recognised by native library or asset names and DEX packages: Qihoo 360 Jiagu, Bangcle/SecNeo, Tencent Legu, Ijiami, Baidu Protect, Alibaba Security Guard, DexProtector, AppSealing and LIAPP. Packages match whole segments, so `com.stubborn` is not Jiagu's `com.stub`.
+- **Hidden code**: DEX/JAR/APK files in `assets/` or `res/raw/`, and a primary DEX with at most 40 classes next to native libraries, the typical shape of a packer stub.
+- **Name obfuscation** (R8/ProGuard), using the existing short-name hint, which this section replaces in Teknologi.
+- **Runtime checks** from the Perilaku tab: root and debugger detection, Play Integrity/SafetyNet and in-memory DEX loading.
+
+Detection is by evidence only and lists the files or packages it used. Commercial protectors that leave no stable file or package name (Promon, Arxan/Digital.ai, DexGuard) are not claimed.

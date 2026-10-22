@@ -159,9 +159,12 @@ private fun TechnologyScreen(report: AnatomyReport) {
     val s = report.structure
     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 12.dp)) {
         item { LessonCard("Petunjuk teknologi", "Pencocokan memakai nama file dan lokasi di APK. Library dapat berasal dari satu modul atau pihak ketiga; bukti ini belum memetakan seluruh arsitektur aplikasi.") }
+        item { Text("Proteksi & pengemasan", style = MaterialTheme.typography.titleMedium) }
+        val protections = report.protections()
+        if (protections.isEmpty()) item { Text("Tidak ada packer, kode tersembunyi, penyamaran nama, atau pemeriksaan lingkungan yang dikenali.", style = MaterialTheme.typography.bodyMedium) }
+        items(protections, key = { "protection:${it.name}" }) { p -> LessonCard("${p.kind}: ${p.name}", p.explanation + "\nBukti: " + p.evidence.joinToString()) }
         item { Text("SDK & library pihak ketiga", style = MaterialTheme.typography.titleMedium) }
         item { Text("Dikenali dari nama package di DEX. Kecocokan berarti library ikut dibundel, belum tentu aktif dipakai. R8 dapat mengganti nama package, jadi library yang tidak muncul belum tentu tidak ada.", style = MaterialTheme.typography.bodySmall) }
-        obfuscationHint(report.code)?.let { hint -> item { LessonCard("Obfuskasi", hint) } }
         if (report.sdks.isEmpty()) item { Text("Tidak ada SDK yang cocok dengan aturan saat ini.", style = MaterialTheme.typography.bodyMedium) }
         report.sdks.groupBy { it.category }.forEach { (category, sdks) ->
             item(key = "sdk-category:$category") { Text(category, style = MaterialTheme.typography.titleSmall) }

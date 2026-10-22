@@ -66,6 +66,10 @@ fun AnatomyReport.toMarkdown(now: Long): String = buildString {
     if (!capabilities.queries.isEmpty) appendLine("- Queries: ${(capabilities.queries.packages + capabilities.queries.intents + capabilities.queries.providers).joinToString { md(it) }}")
     capabilities.backupRules.forEach { appendLine("- Backup ${it.section}: ${if (it.include) "sertakan" else "kecualikan"} ${it.domain}/${md(it.path)}") }
     appendLine()
+    appendLine("## Proteksi & pengemasan")
+    protections().ifEmpty { null }?.forEach { appendLine("- ${md(it.kind)}: **${md(it.name)}** · bukti ${md(it.evidence.joinToString())}") }
+        ?: appendLine("Tidak ada yang dikenali.")
+    appendLine()
     appendLine("## Perilaku")
     if (behaviors.findings.isEmpty()) appendLine("Tidak ada pemanggilan API sensitif yang dikenali.")
     behaviors.findings.forEach { f ->
@@ -162,6 +166,7 @@ fun AnatomyReport.toJson(now: Long): String = json(mapOf(
         "libraries" to native.libraries.map { mapOf("archive" to it.archive, "path" to it.path, "abi" to it.abi, "machine" to it.machine, "bits" to it.bits,
             "minLoadAlign" to it.minLoadAlign, "stored" to it.stored, "zipDataOffset" to it.zipDataOffset, "soname" to it.soname, "needed" to it.needed,
             "jniMethods" to it.jniMethods, "jniOnLoad" to it.hasJniOnLoad, "symbolTable" to it.hasSymbolTable, "debugInfo" to it.hasDebugInfo) }),
+    "protections" to protections().map { mapOf("name" to it.name, "kind" to it.kind, "evidence" to it.evidence) },
     "behaviors" to behaviors.findings.map { mapOf("id" to it.id, "category" to it.category, "title" to it.title, "level" to it.level.name,
         "apis" to it.apis, "count" to it.count, "inAppPackage" to it.inAppPackage, "examples" to it.usedBy.map(::prettyMethod)) },
     "traces" to mapOf(
